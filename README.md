@@ -72,6 +72,74 @@ docker compose up -d
 docker compose exec backend alembic upgrade head
 ```
 
+### docker-compose.yml
+
+The compose file pulls pre-built images from GitHub Container Registry. Copy this to your server if you don't want to clone the full repo:
+
+```yaml
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: magni_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-magni}
+      POSTGRES_USER: ${POSTGRES_USER:-magni}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - magni_internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: magni_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - magni_internal
+
+  backend:
+    image: ghcr.io/ashenkeep/magni-backend:latest
+    container_name: magni_backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-magni}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magni}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      APP_URL: ${APP_URL}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    depends_on:
+      - db
+      - redis
+    networks:
+      - magni_internal
+
+  frontend:
+    image: ghcr.io/ashenkeep/magni-frontend:latest
+    container_name: magni_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks:
+      - magni_internal
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  magni_internal:
+    driver: bridge
+```
+
 #### Step 3 — Configure your reverse proxy
 
 Point your reverse proxy at:
