@@ -26,8 +26,7 @@ export default function SetupPage() {
 
     setLoading(true);
     try {
-      const base = import.meta.env.VITE_API_URL ?? "";
-      const res = await fetch(`${base}/api/auth/setup`, {
+      const res = await fetch("/api/auth/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, display_name: displayName }),

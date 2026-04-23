@@ -20,8 +20,11 @@ function AppRoutes() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const base = import.meta.env.VITE_API_URL ?? "";
-    fetch(`${base}/api/auth/setup-required`)
+    const token = localStorage.getItem("gym_token");
+
+    // Use relative URL — always hits the same server serving this page,
+    // regardless of what VITE_API_URL was baked in at build time
+    fetch("/api/auth/setup-required")
       .then((r) => r.json())
       .then((data) => {
         setSetupRequired(data.required);
@@ -32,9 +35,14 @@ function AppRoutes() {
         }
       })
       .catch(() => {
-        // If check fails just proceed normally
-        setSetupRequired(false);
-        init();
+        // Fallback: no token = show setup, token exists = try to use it
+        const required = !token;
+        setSetupRequired(required);
+        if (required) {
+          navigate("/setup", { replace: true });
+        } else {
+          init();
+        }
       });
   }, []);
 
