@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     environment: str = "production"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
 
+    # Backup
+    backup_dir: str = "/backups"
+    backup_schedule: str = "0 2 * * *"  # cron — default 2am daily
+    tz: str = "UTC"
+
     @property
     def origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",")]

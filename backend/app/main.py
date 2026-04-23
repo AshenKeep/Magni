@@ -1,11 +1,17 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
+import logging
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings, APP_VERSION
 from app.db.redis import get_redis, close_redis
+from app.services.backup import run_backup
 from app.api.routes.auth import router as auth_router
 from app.api.routes.workouts import router as workouts_router
 from app.api.routes.other import (
@@ -15,11 +21,42 @@ from app.api.routes.other import (
     dashboard_router,
 )
 
+logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path("/app/static")
+INDEX = STATIC_DIR / "index.html"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+
+    # Redis
     get_redis()
+
+    # Backup scheduler — only starts if backup dir exists (i.e. volume is mounted)
+    scheduler = AsyncIOScheduler(timezone=settings.tz)
+    cron_parts = settings.backup_schedule.split()
+    if len(cron_parts) == 5:
+        minute, hour, day, month, day_of_week = cron_parts
+        scheduler.add_job(
+            run_backup,
+            CronTrigger(
+                minute=minute,
+                hour=hour,
+                day=day,
+                month=month,
+                day_of_week=day_of_week,
+            ),
+        )
+        scheduler.start()
+        logger.info("Backup scheduler started — schedule: %s %s", settings.backup_schedule, settings.tz)
+    else:
+        logger.warning("Invalid BACKUP_SCHEDULE — backup scheduler not started")
+
     yield
+
+    scheduler.shutdown(wait=False)
     await close_redis()
 
 
@@ -28,7 +65,6 @@ settings = get_settings()
 app = FastAPI(
     title="Magni API",
     version=APP_VERSION,
-    # Docs only available in development — never expose in production
     docs_url="/api/docs" if settings.environment == "development" else None,
     redoc_url="/api/redoc" if settings.environment == "development" else None,
     openapi_url="/api/openapi.json" if settings.environment == "development" else None,
@@ -55,6 +91,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
+# API routes
 app.include_router(auth_router, prefix="/api")
 app.include_router(workouts_router, prefix="/api")
 app.include_router(exercises_router, prefix="/api")
@@ -66,3 +103,19 @@ app.include_router(dashboard_router, prefix="/api")
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": APP_VERSION}
+
+
+@app.post("/api/backup/run")
+async def manual_backup():
+    """Trigger a backup manually — useful for testing."""
+    run_backup()
+    return {"status": "backup triggered"}
+
+
+# Serve React static assets
+if STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        return FileResponse(str(INDEX))

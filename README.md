@@ -2,7 +2,7 @@
 
 **Version:** v0.0.1
 
-A self-hosted gym workout tracking system. Log workouts offline on Android, sync Garmin watch data (heart rate, steps, sleep, active calories), and view everything in a web dashboard — all running on your own server.
+A self-hosted fitness tracking system. Log workouts offline on Android, sync Garmin watch data (heart rate, steps, sleep, active calories), and view everything in a web dashboard — all running on your own server.
 
 ---
 
@@ -13,15 +13,29 @@ Your server (Docker)                    Your phone (Android app)
 ──────────────────────                  ──────────────────────────
   PostgreSQL                            Workout logger (offline-first)
   Redis                    ◄──sync──►  Garmin ConnectIQ bridge
-  FastAPI REST API                      Background sync engine
-  React web dashboard
+  FastAPI + React (one container)       Background sync engine
         ▲
         │ HTTPS (your reverse proxy)
         │
   Internet / your LAN
 ```
 
-Your reverse proxy (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.) handles TLS. The app **requires HTTPS** — it will not work over plain HTTP.
+The backend and frontend run as a **single container** — FastAPI serves both the REST API and the React dashboard. Your reverse proxy only needs to point at one port (`8000`).
+
+Backups are written automatically to a CIFS-mounted NAS share on a cron schedule.
+
+---
+
+## Stack
+
+| Service | Purpose |
+|---|---|
+| `magni_backend` | FastAPI API + React frontend (single container) |
+| `magni_db` | PostgreSQL — persistent data (local volume only) |
+| `magni_redis` | Redis — sync queue and cache (local volume only) |
+| `magni_backup` | Scheduled pg_dump → CIFS NAS share |
+
+> **Important:** Postgres and Redis data volumes must be on local storage. Never mount them over CIFS — Postgres requires POSIX file locking which CIFS does not support. Backups go to CIFS; the live databases do not.
 
 ---
 
@@ -29,52 +43,53 @@ Your reverse proxy (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.) handl
 
 ### Prerequisites
 
-- A server or PC running Linux with Docker Engine 24+ and Docker Compose v2
-- A domain name pointed at your server's public IP, **or** a DDNS service (e.g. [DuckDNS](https://www.duckdns.org) — free) if your home IP changes
-- A reverse proxy configured to forward HTTPS traffic to this server (see below)
-- Ports 80 and 443 open on your router/firewall (forwarded to your server)
+- Linux server with Docker Engine 24+ and Docker Compose v2
+- A domain pointed at your server's public IP (or DDNS — [DuckDNS](https://www.duckdns.org) is free)
+- A reverse proxy handling TLS (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.)
+- Ports 80 and 443 open on your router/firewall
+- A CIFS share on your NAS for backups
 
-### Setting up the GitHub repo and deploying
+### Setting up GitHub and deploying
 
-#### Step 1 — Create the GitHub repo (one time only)
+#### Step 1 — GitHub repo (one time only)
 
 1. Install [GitHub Desktop](https://desktop.github.com) and sign in
-2. **File → New Repository**
-   - Name: `magni`
-   - Local path: choose a folder on your PC
-   - Tick "Initialize this repository with a README"
-   - Click **Create Repository**
-3. Click **Publish repository** in the top bar
-   - Choose public or private
-   - Click **Publish Repository**
-4. Copy all files from this zip into that local folder
-5. In GitHub Desktop you'll see all files listed as changes
-6. Write a commit message (e.g. `Initial commit — v0.0.1`) and click **Commit to main**
-7. Click **Push origin** — files are now on GitHub
+2. **File → New Repository** — name it `magni`, click **Create Repository**
+3. Click **Publish repository**
+4. Copy all files from this zip into the local repo folder
+5. GitHub Desktop will show all files as changes
+6. Commit message: `Initial commit — Magni v0.0.1` → **Commit to main** → **Push origin**
 
 #### Step 2 — Clone and run on your server
-
-SSH into your server, then:
 
 ```bash
 git clone https://github.com/AshenKeep/magni.git
 cd magni
-
-# Copy and fill in environment config
 cp .env.example .env
-nano .env   # or use any editor
+nano .env   # fill in all values
 
-# Pull pre-built images from GHCR and start
 docker compose pull
 docker compose up -d
-
-# Run database migrations
 docker compose exec backend alembic upgrade head
 ```
 
-### docker-compose.yml
+#### Step 3 — Reverse proxy
 
-The compose file pulls pre-built images from GitHub Container Registry. Copy this to your server if you don't want to clone the full repo:
+Point your reverse proxy at `http://YOUR_SERVER_IP:8000` for all routes — both the frontend and `/api/*` are served from the same container on the same port.
+
+#### Step 4 — Create your account
+
+Open `https://gym.yourdomain.com` and register.
+
+### GitHub secrets required
+
+Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+|---|---|
+| `APP_URL` | `https://gym.yourdomain.com` |
+
+### docker-compose.yml
 
 ```yaml
 version: "3.9"
@@ -116,97 +131,73 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
       APP_URL: ${APP_URL}
       ENVIRONMENT: ${ENVIRONMENT:-production}
+      TZ: ${TZ:-UTC}
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - magni_internal
 
-  frontend:
-    image: ghcr.io/ashenkeep/magni-frontend:latest
-    container_name: magni_frontend
+  backup:
+    build:
+      context: ./backup
+      dockerfile: Dockerfile
+    container_name: magni_backup
     restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-magni}
+      POSTGRES_DB: ${POSTGRES_DB:-magni}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - backup_data:/backups
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - magni_internal
 
 volumes:
   postgres_data:
   redis_data:
+  backup_data:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "${CIFS_PATH}"
+      o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
 
 networks:
   magni_internal:
     driver: bridge
 ```
 
-#### Step 3 — Configure your reverse proxy
-
-Point your reverse proxy at:
-- **Frontend:** `http://YOUR_SERVER_IP:3000`
-- **Backend API:** `http://YOUR_SERVER_IP:8000`
-
-Route requests like this:
-- `https://gym.yourdomain.com/api/*` → backend on port `8000`
-- `https://gym.yourdomain.com/*` → frontend on port `3000`
-
-**Nginx Proxy Manager** is the easiest option for home servers — it has a web UI and handles Let's Encrypt certificates automatically. Add two proxy hosts pointing at the ports above.
-
-**Traefik**, **Cloudflare Tunnel**, and plain **Nginx** all work too.
-
-#### Step 4 — Create your account
-
-Open `https://gym.yourdomain.com` in your browser and register an account.
-
 ### Local testing (no reverse proxy)
 
-You can run the backend locally for testing without any reverse proxy or domain. The frontend won't connect to the API locally (it was compiled against your production URL by GitHub Actions), but the backend is fully testable through Swagger UI.
+```bash
+cp .env.example .env
+# Set ENVIRONMENT=development in .env
+docker compose pull
+docker compose up -d
+docker compose exec backend alembic upgrade head
+```
 
-**Steps:**
-
-1. Copy `.env.example` to `.env` and fill in the passwords and keys
-2. Set `ENVIRONMENT=development` in your `.env`
-3. Pull and start the stack:
-   ```bash
-   docker compose pull
-   docker compose up -d
-   ```
-4. Check the backend is up:
-   ```
-   http://localhost:8000/health
-   ```
-5. Open the interactive API docs:
-   ```
-   http://localhost:8000/api/docs
-   ```
-
-From Swagger UI you can register a user, log in, create workouts, push Garmin stats — everything the Android app will do. No domain or HTTPS needed.
-
-The frontend will also be running at `http://localhost:3000` but will have a blank API URL so the UI won't function — use Swagger for local testing instead.
-
----
-
-### GitHub secret required
-
-The frontend build needs your public URL baked in at build time. Add this in your GitHub repo under **Settings → Secrets and variables → Actions → New repository secret**:
-
-| Secret | Value |
-|---|---|
-| `APP_URL` | `https://gym.yourdomain.com` |
+Then open:
+- `http://localhost:8000` — React dashboard
+- `http://localhost:8000/api/docs` — Swagger API docs (development mode only)
+- `http://localhost:8000/health` — health check
 
 ### Deploying updates
-
-Whenever you push changes to GitHub, Actions will build new images automatically. Deploy on the server with:
 
 ```bash
 cd magni
 git pull
 docker compose pull
 docker compose up -d
-```
-
-If a migration is included in the update:
-```bash
+# If the update includes migrations:
 docker compose exec backend alembic upgrade head
 ```
 
@@ -214,43 +205,49 @@ docker compose exec backend alembic upgrade head
 
 | Variable | Description |
 |---|---|
-| `APP_URL` | Full public URL — must be `https://`. Example: `https://gym.yourdomain.com` |
-| `ALLOWED_ORIGINS` | CORS origins — usually the same as `APP_URL` |
+| `APP_URL` | Full public URL — must be `https://` |
+| `ALLOWED_ORIGINS` | CORS origins — usually same as `APP_URL` |
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `REDIS_PASSWORD` | Redis password |
-| `SECRET_KEY` | JWT signing key — generate with `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `ENVIRONMENT` | `production` or `development` (development enables `/api/docs`) |
-| `BACKEND_PORT` | Port the backend exposes to the host (default `8000`) |
-| `FRONTEND_PORT` | Port the frontend exposes to the host (default `3000`) |
+| `SECRET_KEY` | JWT signing key — `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `ENVIRONMENT` | `production` or `development` |
+| `BACKEND_PORT` | Port exposed to host (default `8000`) |
+| `TZ` | Timezone e.g. `Australia/Perth` |
+| `BACKUP_SCHEDULE` | Cron schedule for backups (default `0 2 * * *` — 2am daily) |
+| `CIFS_PATH` | NAS share path e.g. `//192.168.1.x/backups` |
+| `CIFS_USERNAME` | NAS username |
+| `CIFS_PASSWORD` | NAS password |
 
 ### Useful commands
 
 ```bash
 # View logs
 docker compose logs -f backend
-docker compose logs -f frontend
+docker compose logs -f backup
 
-# Restart a service
+# Restart
 docker compose restart backend
 
 # Database shell
 docker compose exec db psql -U magni magni
 
+# Manual backup
+docker compose exec backup /backup.sh
+
 # Stop everything
 docker compose down
 
-# Stop and delete all data (irreversible)
+# Stop and wipe all data (irreversible)
 docker compose down -v
 ```
 
 ### Backup
 
-```bash
-# Dump database to file
-docker compose exec db pg_dump -U magni magni > backup_$(date +%Y%m%d).sql
+Backups run automatically per `BACKUP_SCHEDULE`. Files are named `magni_backup_YYYYMMDD_HHMMSS.sql.gz` and kept for 30 days before auto-deletion.
 
-# Restore
-docker compose exec -T db psql -U magni magni < backup_YYYYMMDD.sql
+To restore:
+```bash
+gunzip -c magni_backup_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db psql -U magni magni
 ```
 
 ---
@@ -259,60 +256,33 @@ docker compose exec -T db psql -U magni magni < backup_YYYYMMDD.sql
 
 > Coming in the next build phase.
 
-The Android app is built with Kotlin and Jetpack Compose. It will include:
-- Offline-first workout logging (Room database)
-- Background sync to this server when connected
-- Garmin ConnectIQ SDK bridge — works with all modern Garmin watch families (Forerunner, Fenix, Epix, Venu, Vivoactive, Instinct)
-- Live HR streaming during workouts
-- Daily activity sync (steps, sleep, calories, resting HR)
+Kotlin + Jetpack Compose. Offline-first workout logging, Garmin ConnectIQ bridge (all watch families), background sync to this server.
 
 ---
 
 ## API reference
 
-API docs are available at `https://YOUR_DOMAIN/api/docs` when `ENVIRONMENT=development`.
-
-### Endpoints
+Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/api/auth/register` | Create account |
 | `POST` | `/api/auth/login` | Get JWT token |
 | `GET` | `/api/auth/me` | Current user |
-| `GET` | `/api/dashboard/` | Summary stats + today's Garmin data |
+| `GET` | `/api/dashboard/` | Summary stats |
 | `POST` | `/api/workouts/` | Log a workout |
-| `GET` | `/api/workouts/` | List workouts (paginated) |
-| `GET` | `/api/workouts/{id}` | Get workout with sets |
+| `GET` | `/api/workouts/` | List workouts |
+| `GET` | `/api/workouts/{id}` | Workout detail |
 | `PATCH` | `/api/workouts/{id}` | Update workout |
 | `DELETE` | `/api/workouts/{id}` | Delete workout |
-| `POST` | `/api/exercises/` | Add exercise to library |
+| `POST` | `/api/exercises/` | Add exercise |
 | `GET` | `/api/exercises/` | List exercises |
 | `POST` | `/api/stats/daily` | Upsert daily Garmin stats |
 | `GET` | `/api/stats/daily` | Query daily stats |
 | `POST` | `/api/stats/hr` | Bulk insert HR readings |
 | `GET` | `/api/stats/hr` | Query HR time-series |
-| `POST` | `/api/sync/` | Batch sync from Android (offline data) |
+| `POST` | `/api/sync/` | Batch sync from Android |
 | `GET` | `/health` | Health check + version |
-
-### Authentication
-
-All endpoints except `/api/auth/*` and `/health` require a Bearer token:
-
-```
-Authorization: Bearer <token>
-```
-
-Get a token by posting to `/api/auth/login`.
-
----
-
-## Security
-
-- All API responses include `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` headers
-- JWT tokens expire after 7 days
-- Passwords are hashed with bcrypt
-- CORS is locked to `ALLOWED_ORIGINS` — only your domain can call the API from a browser
-- API docs (`/api/docs`) are disabled in production mode
 
 ---
 
