@@ -20,9 +20,7 @@ Your server (Docker)                    Your phone (Android app)
   Internet / your LAN
 ```
 
-The backend and frontend run as a **single container** — FastAPI serves both the REST API and the React dashboard. Your reverse proxy only needs to point at one port (`8000`).
-
-Backups are written automatically to a CIFS-mounted NAS share on a cron schedule.
+The backend and frontend run as a **single container** — FastAPI serves both the REST API and the React dashboard. Scheduled backups also run inside the same container via APScheduler, writing compressed dumps to a CIFS-mounted NAS volume. Your reverse proxy only needs to point at one port (`8000`).
 
 ---
 
@@ -30,12 +28,11 @@ Backups are written automatically to a CIFS-mounted NAS share on a cron schedule
 
 | Service | Purpose |
 |---|---|
-| `magni_backend` | FastAPI API + React frontend (single container) |
+| `magni_backend` | FastAPI API + React frontend + backup scheduler (single container) |
 | `magni_db` | PostgreSQL — persistent data (local volume only) |
 | `magni_redis` | Redis — sync queue and cache (local volume only) |
-| `magni_backup` | Scheduled pg_dump → CIFS NAS share |
 
-> **Important:** Postgres and Redis data volumes must be on local storage. Never mount them over CIFS — Postgres requires POSIX file locking which CIFS does not support. Backups go to CIFS; the live databases do not.
+> **Important:** Postgres and Redis data volumes must be on local storage. Never mount them over CIFS — Postgres requires POSIX file locking which CIFS does not support. The backup volume goes to CIFS; the live databases do not.
 
 ---
 
@@ -75,7 +72,7 @@ docker compose exec backend alembic upgrade head
 
 #### Step 3 — Reverse proxy
 
-Point your reverse proxy at `http://YOUR_SERVER_IP:8000` for all routes — both the frontend and `/api/*` are served from the same container on the same port.
+Point your reverse proxy at `http://YOUR_SERVER_IP:8000` for all routes — the frontend dashboard and all `/api/*` endpoints are served from the same container on the same port.
 
 #### Step 4 — Create your account
 
@@ -105,6 +102,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magni}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - magni_internal
 
@@ -115,6 +117,11 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - magni_internal
 
@@ -132,31 +139,15 @@ services:
       APP_URL: ${APP_URL}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       TZ: ${TZ:-UTC}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      BACKUP_DIR: /backups
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-      - magni_internal
-
-  backup:
-    build:
-      context: ./backup
-      dockerfile: Dockerfile
-    container_name: magni_backup
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-magni}
-      POSTGRES_DB: ${POSTGRES_DB:-magni}
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
-      TZ: ${TZ:-UTC}
     volumes:
       - backup_data:/backups
-    depends_on:
-      db:
-        condition: service_healthy
     networks:
       - magni_internal
 
@@ -212,8 +203,9 @@ docker compose exec backend alembic upgrade head
 | `SECRET_KEY` | JWT signing key — `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENVIRONMENT` | `production` or `development` |
 | `BACKEND_PORT` | Port exposed to host (default `8000`) |
-| `TZ` | Timezone e.g. `Australia/Perth` |
+| `TZ` | Timezone e.g. `Australia/Perth` (used by backup scheduler) |
 | `BACKUP_SCHEDULE` | Cron schedule for backups (default `0 2 * * *` — 2am daily) |
+| `BACKUP_DIR` | Path inside the container where backups are written (default `/backups`) |
 | `CIFS_PATH` | NAS share path e.g. `//192.168.1.x/backups` |
 | `CIFS_USERNAME` | NAS username |
 | `CIFS_PASSWORD` | NAS password |
@@ -223,7 +215,6 @@ docker compose exec backend alembic upgrade head
 ```bash
 # View logs
 docker compose logs -f backend
-docker compose logs -f backup
 
 # Restart
 docker compose restart backend
@@ -231,8 +222,8 @@ docker compose restart backend
 # Database shell
 docker compose exec db psql -U magni magni
 
-# Manual backup
-docker compose exec backup /backup.sh
+# Trigger a manual backup immediately
+curl -X POST http://localhost:8000/api/backup/run
 
 # Stop everything
 docker compose down
@@ -241,11 +232,16 @@ docker compose down
 docker compose down -v
 ```
 
-### Backup
+### Backups
 
-Backups run automatically per `BACKUP_SCHEDULE`. Files are named `magni_backup_YYYYMMDD_HHMMSS.sql.gz` and kept for 30 days before auto-deletion.
+Backups run automatically inside the backend container on the schedule set by `BACKUP_SCHEDULE`. Files are written to the CIFS-mounted NAS volume as `magni_backup_YYYYMMDD_HHMMSS.sql.gz` and auto-deleted after 30 days.
 
-To restore:
+To trigger a backup manually:
+```bash
+curl -X POST http://localhost:8000/api/backup/run
+```
+
+To restore from a backup:
 ```bash
 gunzip -c magni_backup_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db psql -U magni magni
 ```
@@ -282,6 +278,7 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 | `POST` | `/api/stats/hr` | Bulk insert HR readings |
 | `GET` | `/api/stats/hr` | Query HR time-series |
 | `POST` | `/api/sync/` | Batch sync from Android |
+| `POST` | `/api/backup/run` | Trigger manual backup |
 | `GET` | `/health` | Health check + version |
 
 ---
