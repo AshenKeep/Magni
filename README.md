@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.1
+**Version:** v0.0.2
 
 A self-hosted fitness tracking system. Log workouts offline on Android, sync Garmin watch data (heart rate, steps, sleep, active calories), and view everything in a web dashboard — all running on your own server.
 
@@ -74,9 +74,26 @@ docker compose exec backend alembic upgrade head
 
 Point your reverse proxy at `http://YOUR_SERVER_IP:8000` for all routes — the frontend dashboard and all `/api/*` endpoints are served from the same container on the same port.
 
-#### Step 4 — Create your account
+#### Step 4 — First-time setup
 
-Open `https://gym.yourdomain.com` and register.
+When you open the app for the first time, you'll be automatically redirected to the **setup page** where you create your account. Fill in your name, email and password — you'll be logged straight in. The setup page is permanently inaccessible once an account exists.
+
+### Lost access — emergency recovery
+
+If you lose access to your account, use the CLI inside the backend container to recover without needing to log in:
+
+```bash
+# Reset a user's password
+docker compose exec backend python -m app.cli reset-password --email you@example.com --password newpassword
+
+# Create a new user account directly
+docker compose exec backend python -m app.cli create-user --email you@example.com --password newpassword --name "Your Name"
+
+# List all accounts
+docker compose exec backend python -m app.cli list-users
+```
+
+These commands talk directly to the database and bypass authentication entirely.
 
 ### GitHub secrets required
 
@@ -262,6 +279,8 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/api/auth/setup-required` | Returns `{"required": true}` if no accounts exist |
+| `POST` | `/api/auth/setup` | Create first account (only works if no users exist) |
 | `POST` | `/api/auth/register` | Create account |
 | `POST` | `/api/auth/login` | Get JWT token |
 | `GET` | `/api/auth/me` | Current user |

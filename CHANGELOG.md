@@ -5,6 +5,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.2] — 2026-04-23
+
+### Added
+
+#### Backend
+- `GET /api/auth/setup-required` — returns `{"required": true}` if no users exist, `{"required": false}` otherwise
+- `POST /api/auth/setup` — creates the first user account and returns a JWT token immediately. Returns 403 if any user already exists
+- `SetupRequest` Pydantic schema for the setup endpoint
+- `app/cli.py` — emergency account management CLI, bypasses authentication entirely:
+  - `reset-password --email --password` — reset any user's password directly via the database
+  - `create-user --email --password --name` — create a new account
+  - `list-users` — list all accounts with status and creation date
+
+#### Frontend
+- `SetupPage.tsx` — first-run setup page with display name, email, password, confirm password fields. Logs user straight in on success. Shows a notice that the page is only accessible once
+- `App.tsx` — on load, checks `/api/auth/setup-required` before rendering anything. Redirects to `/setup` if needed, redirects away from `/setup` if setup is already complete
+- Version bumped to `v0.0.2` in sidebar
+
+#### Docs
+- README updated — first-time setup instructions replace manual account creation step
+- README — lost access / emergency recovery section with CLI commands
+- README — API reference updated with setup endpoints
+
+---
+
 ## [0.0.1] — 2026-04-23
 
 ### Added

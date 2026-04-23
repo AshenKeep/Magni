@@ -1,6 +1,6 @@
 version: "3.9"
 
-# Magni v0.0.1
+# Magni v0.0.2
 # Single backend container serves the API, React dashboard, and runs scheduled backups.
 # Reverse proxy points everything at port 8000.
 # Postgres and Redis volumes MUST be local — do not mount over CIFS.
@@ -25,7 +25,7 @@ services:
     networks:
       - magni_internal
     labels:
-      com.magni.version: "0.0.1"
+      com.magni.version: "0.0.2"
       com.magni.service: "database"
 
   redis:
@@ -43,7 +43,7 @@ services:
     networks:
       - magni_internal
     labels:
-      com.magni.version: "0.0.1"
+      com.magni.version: "0.0.2"
       com.magni.service: "cache"
 
   backend:
@@ -77,7 +77,7 @@ services:
       timeout: 10s
       retries: 3
     labels:
-      com.magni.version: "0.0.1"
+      com.magni.version: "0.0.2"
       com.magni.service: "backend"
 
 volumes:
