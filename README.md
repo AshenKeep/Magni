@@ -158,6 +158,34 @@ Route requests like this:
 
 Open `https://gym.yourdomain.com` in your browser and register an account.
 
+### Local testing (no reverse proxy)
+
+You can run the backend locally for testing without any reverse proxy or domain. The frontend won't connect to the API locally (it was compiled against your production URL by GitHub Actions), but the backend is fully testable through Swagger UI.
+
+**Steps:**
+
+1. Copy `.env.example` to `.env` and fill in the passwords and keys
+2. Set `ENVIRONMENT=development` in your `.env`
+3. Pull and start the stack:
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+4. Check the backend is up:
+   ```
+   http://localhost:8000/health
+   ```
+5. Open the interactive API docs:
+   ```
+   http://localhost:8000/api/docs
+   ```
+
+From Swagger UI you can register a user, log in, create workouts, push Garmin stats — everything the Android app will do. No domain or HTTPS needed.
+
+The frontend will also be running at `http://localhost:3000` but will have a blank API URL so the UI won't function — use Swagger for local testing instead.
+
+---
+
 ### GitHub secret required
 
 The frontend build needs your public URL baked in at build time. Add this in your GitHub repo under **Settings → Secrets and variables → Actions → New repository secret**:
