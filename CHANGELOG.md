@@ -22,8 +22,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 - API docs disabled in production, available in development mode at `/api/docs`
 
 #### Infrastructure
-- `docker-compose.yml` — PostgreSQL 16, Redis 7, FastAPI backend (port 8000), React frontend (port 3000)
-- No bundled reverse proxy — works with any proxy (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.)
+- GitHub Actions workflow — builds backend and frontend images on push to `main`, pushes to `ghcr.io/ashenkeep/magni-backend` and `ghcr.io/ashenkeep/magni-frontend`
+- `docker-compose.yml` pulls pre-built images from GHCR — server deploy is `docker compose pull && docker compose up -d`
 - Docker Compose labels with `com.magni.version`
 - Multi-stage Docker builds for backend and frontend
 - Alembic migration environment wired to async SQLAlchemy

@@ -1,7 +1,8 @@
 version: "3.9"
 
 # Magni v0.0.1
-# This stack exposes backend on port 8000 and frontend on port 3000.
+# Images are built via GitHub Actions and pushed to GHCR.
+# On your server: docker compose pull && docker compose up -d
 # Place your own reverse proxy (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.)
 # in front of these ports. Your proxy MUST handle TLS — the app requires HTTPS.
 
@@ -46,9 +47,7 @@ services:
       com.magni.service: "cache"
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ghcr.io/ashenkeep/magni-backend:latest
     container_name: magni_backend
     restart: unless-stopped
     ports:
@@ -77,11 +76,7 @@ services:
       com.magni.service: "backend"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: ${APP_URL}
+    image: ghcr.io/ashenkeep/magni-frontend:latest
     container_name: magni_frontend
     restart: unless-stopped
     ports:

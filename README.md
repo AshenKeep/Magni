@@ -57,15 +57,16 @@ Your reverse proxy (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.) handl
 SSH into your server, then:
 
 ```bash
-git clone https://github.com/YOURUSERNAME/magni.git
+git clone https://github.com/AshenKeep/magni.git
 cd magni
 
 # Copy and fill in environment config
 cp .env.example .env
 nano .env   # or use any editor
 
-# Build and start
-docker compose up -d --build
+# Pull pre-built images from GHCR and start
+docker compose pull
+docker compose up -d
 
 # Run database migrations
 docker compose exec backend alembic upgrade head
@@ -89,14 +90,23 @@ Route requests like this:
 
 Open `https://gym.yourdomain.com` in your browser and register an account.
 
+### GitHub secret required
+
+The frontend build needs your public URL baked in at build time. Add this in your GitHub repo under **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Value |
+|---|---|
+| `APP_URL` | `https://gym.yourdomain.com` |
+
 ### Deploying updates
 
-Whenever you push changes to GitHub, deploy on the server with:
+Whenever you push changes to GitHub, Actions will build new images automatically. Deploy on the server with:
 
 ```bash
 cd magni
 git pull
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 If a migration is included in the update:
