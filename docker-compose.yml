@@ -101,15 +101,15 @@ volumes:
       o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
 
   # Media volume — exercise GIFs
-  # Set MEDIA_STORAGE=local for local Docker volume
-  # Set MEDIA_STORAGE=cifs for NAS share (fill MEDIA_CIFS_* vars)
-  # Set MEDIA_STORAGE=external to skip downloading (CDN links only)
+  # Default: local Docker volume (no extra config needed)
+  # For CIFS: replace this entire block with the commented example below
   media_data:
-    driver: local
-    driver_opts:
-      type: ${MEDIA_VOLUME_TYPE:-none}
-      device: ${MEDIA_VOLUME_DEVICE:-}
-      o: ${MEDIA_VOLUME_OPTIONS:-bind}
+  # media_data:
+  #   driver: local
+  #   driver_opts:
+  #     type: cifs
+  #     device: "//YOUR_NAS_IP/media"
+  #     o: "username=YOUR_USER,password=YOUR_PASS,uid=1000,gid=1000"
 
 networks:
   magni_internal:

@@ -150,11 +150,13 @@ volumes:
       device: "${CIFS_PATH}"
       o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
   media_data:
-    driver: local
-    driver_opts:
-      type: ${MEDIA_VOLUME_TYPE:-none}
-      device: ${MEDIA_VOLUME_DEVICE:-}
-      o: ${MEDIA_VOLUME_OPTIONS:-bind}
+  # For CIFS NAS storage, replace media_data with:
+  # media_data:
+  #   driver: local
+  #   driver_opts:
+  #     type: cifs
+  #     device: "//YOUR_NAS_IP/media"
+  #     o: "username=YOUR_USER,password=YOUR_PASS,uid=1000,gid=1000"
 
 networks:
   magni_internal:
@@ -185,9 +187,6 @@ networks:
 | `MEDIA_CIFS_PATH` | NAS media share (when `MEDIA_STORAGE=cifs`) |
 | `MEDIA_CIFS_USERNAME` | NAS username for media |
 | `MEDIA_CIFS_PASSWORD` | NAS password for media |
-| `MEDIA_VOLUME_TYPE` | Docker volume type (`none` for local, `cifs` for NAS) |
-| `MEDIA_VOLUME_DEVICE` | Volume device path (NAS path when using cifs) |
-| `MEDIA_VOLUME_OPTIONS` | Volume mount options |
 
 ---
 
@@ -217,11 +216,24 @@ Magni integrates with [AscendAPI](https://ascendapi.com) to seed your exercise l
 
 ### Media storage options
 
+### Media storage options
+
 Set `MEDIA_STORAGE` in `.env`:
 
 - `external` — GIFs served from AscendAPI CDN (default, no storage needed)
-- `local` — GIFs downloaded to a local Docker volume
+- `local` — GIFs downloaded to a local Docker volume (default `media_data` volume)
 - `cifs` — GIFs downloaded to a CIFS NAS share
+
+For CIFS media storage, edit `docker-compose.yml` and replace the `media_data:` volume block with:
+
+```yaml
+media_data:
+  driver: local
+  driver_opts:
+    type: cifs
+    device: "//YOUR_NAS_IP/media"
+    o: "username=YOUR_USER,password=YOUR_PASS,uid=1000,gid=1000"
+```
 
 ---
 
