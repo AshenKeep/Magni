@@ -110,6 +110,7 @@ export const api = {
     downloadGifs:    () => request<GifDownloadResult>("/api/admin/exercises/download-gifs", { method: "POST" }),
     mediaStatus:     () => request<MediaStatus>("/api/admin/exercises/media/status"),
     seedLogs:        () => request<SeedLogEntry[]>("/api/admin/logs/seed"),
+    debugEnv:        () => request<Record<string, unknown>>("/api/admin/debug/env"),
   },
 };
 

@@ -34,6 +34,24 @@ def _get_ascendapi_key() -> str:
 # Backup
 # ---------------------------------------------------------------------------
 
+@router.get("/debug/env")
+async def debug_env(_: str = Depends(get_current_user_id)):
+    """
+    Shows what env vars the container can actually see.
+    Use this to diagnose key configuration issues.
+    """
+    key = os.environ.get("ASCENDAPI_KEY", "")
+    all_keys = [k for k in os.environ.keys() if "ASCEND" in k or "RAPID" in k or "API" in k]
+    return {
+        "ascendapi_key_set": bool(key),
+        "ascendapi_key_length": len(key),
+        "ascendapi_key_preview": f"{key[:8]}…{key[-4:]}" if len(key) > 12 else ("(empty)" if not key else key),
+        "related_env_vars": all_keys,
+        "media_storage": os.environ.get("MEDIA_STORAGE", "(not set)"),
+        "environment": os.environ.get("ENVIRONMENT", "(not set)"),
+    }
+
+
 @router.get("/backup/status", response_model=BackupStatus)
 async def backup_status(_: str = Depends(get_current_user_id)):
     settings = get_settings()

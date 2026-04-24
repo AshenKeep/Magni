@@ -3,6 +3,38 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, SeedResult, GifDownloadResult, SeedLogEntry } from "@/lib/api";
 import { format } from "date-fns";
 
+function EnvDebugPanel() {
+  const [data, setData] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function check() {
+    setLoading(true); setError("");
+    try {
+      const result = await api.admin.debugEnv();
+      setData(result);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <button onClick={check} disabled={loading} className="btn-secondary text-xs">
+        {loading ? "Checking…" : "Check container env vars"}
+      </button>
+      {error && <p className="text-xs text-danger">{error}</p>}
+      {data && (
+        <pre className="bg-black border border-border rounded-lg p-3 text-xs font-mono text-secondary overflow-x-auto whitespace-pre-wrap">
+          {JSON.stringify(data, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function fmtBytes(bytes: number | null): string {
   if (!bytes) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -345,13 +377,19 @@ export default function AdminPage() {
       </div>
 
       {/* System */}
-      <div className="card p-5">
-        <p className="label mb-3">System</p>
+      <div className="card p-5 space-y-4">
+        <p className="label">System</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.5</span></div>
           <div><span className="text-secondary">Environment </span><span className="text-primary font-mono">{import.meta.env.MODE}</span></div>
           <div><span className="text-secondary">Media storage </span><span className="text-primary font-mono">{mediaStatus?.media_storage ?? "…"}</span></div>
           <div><span className="text-secondary">GIFs cached </span><span className="text-primary font-mono">{mediaStatus?.gif_count ?? 0}</span></div>
+        </div>
+
+        {/* Env debug */}
+        <div>
+          <p className="label mb-2">Environment debug</p>
+          <EnvDebugPanel />
         </div>
       </div>
     </div>
