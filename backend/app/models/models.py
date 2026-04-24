@@ -28,6 +28,7 @@ class User(Base):
     exercises: Mapped[list[Exercise]] = relationship("Exercise", back_populates="user", cascade="all, delete-orphan")
     daily_stats: Mapped[list[DailyStat]] = relationship("DailyStat", back_populates="user", cascade="all, delete-orphan")
     hr_readings: Mapped[list[HeartRateReading]] = relationship("HeartRateReading", back_populates="user", cascade="all, delete-orphan")
+    templates: Mapped[list[Template]] = relationship("Template", back_populates="user", cascade="all, delete-orphan")
 
 
 class Exercise(Base):
@@ -120,3 +121,36 @@ class HeartRateReading(Base):
     source: Mapped[str] = mapped_column(String(50), default="garmin")
 
     user: Mapped[User] = relationship("User", back_populates="hr_readings")
+
+
+# ---------------------------------------------------------------------------
+# Workout Template
+# ---------------------------------------------------------------------------
+class Template(Base):
+    __tablename__ = "templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    user: Mapped[User] = relationship("User", back_populates="templates")
+    exercises: Mapped[list[TemplateExercise]] = relationship("TemplateExercise", back_populates="template", cascade="all, delete-orphan", order_by="TemplateExercise.order")
+
+
+class TemplateExercise(Base):
+    __tablename__ = "template_exercises"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("templates.id"), nullable=False)
+    exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
+    order: Mapped[int] = mapped_column(Integer, default=0)
+    target_sets: Mapped[Optional[int]] = mapped_column(Integer)
+    target_reps: Mapped[Optional[int]] = mapped_column(Integer)
+    target_weight_kg: Mapped[Optional[float]] = mapped_column(Float)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    template: Mapped[Template] = relationship("Template", back_populates="exercises")
+    exercise: Mapped[Exercise] = relationship("Exercise")

@@ -8,11 +8,13 @@ import LoginPage from "@/components/pages/LoginPage";
 import DashboardPage from "@/components/pages/DashboardPage";
 import WorkoutsPage from "@/components/pages/WorkoutsPage";
 import WorkoutDetailPage from "@/components/pages/WorkoutDetailPage";
+import NewWorkoutPage from "@/components/pages/NewWorkoutPage";
+import ExercisesPage from "@/components/pages/ExercisesPage";
+import TemplatesPage from "@/components/pages/TemplatesPage";
 import ActivityPage from "@/components/pages/ActivityPage";
+import AdminPage from "@/components/pages/AdminPage";
 
-const qc = new QueryClient({
-  defaultOptions: { queries: { staleTime: 60_000, retry: 1 } },
-});
+const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
 
 type AppState = "checking" | "setup" | "ready";
 
@@ -21,7 +23,6 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>("checking");
 
   useEffect(() => {
-    // Run once on mount — check if setup is needed then initialise auth
     fetch("/api/auth/setup-required")
       .then((r) => r.json())
       .then((data) => {
@@ -32,20 +33,19 @@ export default function App() {
         }
       })
       .catch(() => {
-        // If check fails, fall back based on whether a token exists
         const token = localStorage.getItem("gym_token");
-        if (!token) {
-          setAppState("setup");
-        } else {
-          init().then(() => setAppState("ready"));
-        }
+        if (!token) { setAppState("setup"); }
+        else { init().then(() => setAppState("ready")); }
       });
-  }, []); // Empty deps — runs once only
+  }, []);
 
   if (appState === "checking" || (appState === "ready" && loading)) {
     return (
-      <div className="flex h-screen items-center justify-center text-gray-500 text-sm">
-        Loading…
+      <div className="flex h-screen items-center justify-center bg-black">
+        <div className="text-center">
+          <p className="text-blue text-2xl font-bold mb-2">Magni</p>
+          <p className="text-secondary text-sm">Loading…</p>
+        </div>
       </div>
     );
   }
@@ -64,7 +64,6 @@ export default function App() {
     );
   }
 
-  // appState === "ready"
   return (
     <QueryClientProvider client={qc}>
       <BrowserRouter>
@@ -73,8 +72,12 @@ export default function App() {
           <Route path="/" element={user ? <Layout /> : <Navigate to="/login" replace />}>
             <Route index element={<DashboardPage />} />
             <Route path="workouts" element={<WorkoutsPage />} />
+            <Route path="workouts/new" element={<NewWorkoutPage />} />
             <Route path="workouts/:id" element={<WorkoutDetailPage />} />
+            <Route path="exercises" element={<ExercisesPage />} />
+            <Route path="templates" element={<TemplatesPage />} />
             <Route path="activity" element={<ActivityPage />} />
+            <Route path="admin" element={<AdminPage />} />
           </Route>
           <Route path="*" element={<Navigate to={user ? "/" : "/login"} replace />} />
         </Routes>

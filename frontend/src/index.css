@@ -2,8 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @layer base {
+  * {
+    box-sizing: border-box;
+  }
   body {
-    @apply bg-gray-950 text-gray-100 antialiased;
+    background-color: #000000;
+    color: #F0F0F0;
+    font-family: Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: #0D0D0D; }
+  ::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 2px; }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue text-white font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-blue-dim active:scale-95;
+  }
+  .btn-secondary {
+    @apply bg-card border border-border text-primary font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-muted active:scale-95;
+  }
+  .btn-danger {
+    @apply bg-danger/10 border border-danger/30 text-danger font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-danger/20 active:scale-95;
+  }
+  .btn-magenta {
+    @apply bg-magenta text-white font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-magenta-dim active:scale-95;
+  }
+  .card {
+    @apply bg-card border border-border rounded-xl;
+  }
+  .input {
+    @apply w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-primary placeholder-secondary focus:outline-none focus:border-blue transition-colors;
+  }
+  .label {
+    @apply block text-xs text-secondary uppercase tracking-wider mb-1.5;
+  }
+  .badge-blue {
+    @apply inline-flex items-center gap-1 bg-blue-glow text-blue text-xs px-2 py-0.5 rounded-full;
+  }
+  .badge-magenta {
+    @apply inline-flex items-center gap-1 bg-magenta-glow text-magenta text-xs px-2 py-0.5 rounded-full;
   }
 }

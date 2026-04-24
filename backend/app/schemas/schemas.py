@@ -115,6 +115,15 @@ class WorkoutCreate(BaseModel):
     sets: list[WorkoutSetCreate] = []
 
 
+class WorkoutSetUpdate(BaseModel):
+    reps: Optional[int] = None
+    weight_kg: Optional[float] = None
+    duration_seconds: Optional[int] = None
+    distance_m: Optional[float] = None
+    rpe: Optional[int] = None
+    notes: Optional[str] = None
+
+
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
@@ -220,3 +229,84 @@ class DashboardStats(BaseModel):
     steps_today: Optional[int]
     resting_hr_today: Optional[int]
     calories_today: Optional[int]
+
+
+# --- Templates ---
+
+class TemplateExerciseCreate(BaseModel):
+    exercise_id: UUID
+    order: int = 0
+    target_sets: Optional[int] = None
+    target_reps: Optional[int] = None
+    target_weight_kg: Optional[float] = None
+    notes: Optional[str] = None
+
+
+class TemplateExerciseResponse(BaseModel):
+    id: UUID
+    exercise_id: UUID
+    order: int
+    target_sets: Optional[int]
+    target_reps: Optional[int]
+    target_weight_kg: Optional[float]
+    notes: Optional[str]
+    model_config = {"from_attributes": True}
+
+
+class TemplateCreate(BaseModel):
+    name: str
+    notes: Optional[str] = None
+    exercises: list[TemplateExerciseCreate] = []
+
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TemplateResponse(BaseModel):
+    id: UUID
+    name: str
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    exercises: list[TemplateExerciseResponse] = []
+    model_config = {"from_attributes": True}
+
+
+# --- Admin ---
+
+class BackupStatus(BaseModel):
+    last_backup: Optional[str]
+    last_backup_size_bytes: Optional[int]
+    backup_count: int
+    schedule: str
+    timezone: str
+    backup_dir: str
+    cifs_path: Optional[str]
+
+
+class BackupConfigUpdate(BaseModel):
+    backup_schedule: Optional[str] = None
+    tz: Optional[str] = None
+
+
+class AdminUserResponse(BaseModel):
+    id: UUID
+    email: str
+    display_name: str
+    is_active: bool
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v

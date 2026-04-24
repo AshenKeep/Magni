@@ -45,6 +45,25 @@ async def list_exercises(
     return result.scalars().all()
 
 
+@exercises_router.patch("/{exercise_id}", response_model=ExerciseResponse)
+async def update_exercise(
+    exercise_id: UUID,
+    payload: ExerciseCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Exercise).where(Exercise.id == exercise_id, Exercise.user_id == user_id)
+    )
+    ex = result.scalar_one_or_none()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(ex, field, value)
+    await db.flush()
+    return ex
+
+
 @exercises_router.delete("/{exercise_id}", status_code=204)
 async def delete_exercise(
     exercise_id: UUID,

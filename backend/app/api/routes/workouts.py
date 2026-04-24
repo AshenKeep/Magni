@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
 from app.models.models import Workout, WorkoutSet
-from app.schemas.schemas import WorkoutCreate, WorkoutUpdate, WorkoutResponse
+from app.schemas.schemas import WorkoutCreate, WorkoutUpdate, WorkoutResponse, WorkoutSetCreate, WorkoutSetResponse, WorkoutSetUpdate
 from app.core.security import get_current_user_id
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
@@ -141,3 +141,61 @@ async def delete_workout(
     if not workout:
         raise HTTPException(status_code=404, detail="Workout not found")
     await db.delete(workout)
+
+
+# ---------------------------------------------------------------------------
+# Set-level CRUD (for live workout logging)
+# ---------------------------------------------------------------------------
+
+@router.post("/{workout_id}/sets", response_model=WorkoutSetResponse, status_code=201)
+async def add_set(
+    workout_id: UUID,
+    payload: WorkoutSetCreate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Workout).where(Workout.id == workout_id, Workout.user_id == user_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Workout not found")
+    ws = WorkoutSet(workout_id=workout_id, **payload.model_dump())
+    db.add(ws)
+    await db.flush()
+    return ws
+
+
+@router.patch("/{workout_id}/sets/{set_id}", response_model=WorkoutSetResponse)
+async def update_set(
+    workout_id: UUID,
+    set_id: UUID,
+    payload: WorkoutSetUpdate,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Workout).where(Workout.id == workout_id, Workout.user_id == user_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Workout not found")
+    result = await db.execute(select(WorkoutSet).where(WorkoutSet.id == set_id, WorkoutSet.workout_id == workout_id))
+    ws = result.scalar_one_or_none()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Set not found")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(ws, field, value)
+    await db.flush()
+    return ws
+
+
+@router.delete("/{workout_id}/sets/{set_id}", status_code=204)
+async def delete_set(
+    workout_id: UUID,
+    set_id: UUID,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Workout).where(Workout.id == workout_id, Workout.user_id == user_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Workout not found")
+    result = await db.execute(select(WorkoutSet).where(WorkoutSet.id == set_id, WorkoutSet.workout_id == workout_id))
+    ws = result.scalar_one_or_none()
+    if not ws:
+        raise HTTPException(status_code=404, detail="Set not found")
+    await db.delete(ws)

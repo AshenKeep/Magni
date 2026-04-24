@@ -22,46 +22,49 @@ export default function WorkoutsPage() {
   return (
     <div className="p-8 space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-100">Workouts</h1>
-        <p className="text-xs text-gray-600">Synced from Android app</p>
+        <h1 className="text-2xl font-bold text-primary">Workouts</h1>
+        <div className="flex gap-3">
+          <Link to="/templates" className="btn-secondary">From template</Link>
+          <Link to="/workouts/new" className="btn-primary">+ New workout</Link>
+        </div>
       </div>
 
-      {isLoading && <p className="text-gray-500 text-sm">Loading…</p>}
+      {isLoading && <div className="text-secondary text-sm">Loading…</div>}
 
       <div className="space-y-2">
         {(workouts ?? []).map((w) => (
-          <Link
-            key={w.id} to={`/workouts/${w.id}`}
-            className="block bg-gray-900 border border-gray-800 rounded-xl px-5 py-4 hover:border-gray-700 transition-colors"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-100">{w.title ?? "Workout"}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {format(new Date(w.started_at), "EEEE d MMMM yyyy")}
-                  {w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}
-                  {` · ${w.sets.length} sets`}
-                </p>
-              </div>
-              <div className="flex gap-3 text-xs">
-                {w.avg_heart_rate  && <span className="text-red-400">♥ {w.avg_heart_rate}</span>}
-                {w.calories_burned && <span className="text-gray-400">{w.calories_burned} cal</span>}
-              </div>
+          <Link key={w.id} to={`/workouts/${w.id}`}
+            className="card px-5 py-4 flex items-center justify-between hover:bg-card/80 transition-all block">
+            <div>
+              <p className="font-medium text-primary">{w.title ?? "Workout"}</p>
+              <p className="text-xs text-secondary mt-1">
+                {format(new Date(w.started_at), "EEEE d MMMM yyyy")}
+                {w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}
+                {` · ${w.sets.length} sets`}
+              </p>
+            </div>
+            <div className="flex gap-4 text-xs items-center">
+              {w.avg_heart_rate  && <span className="text-magenta">♥ {w.avg_heart_rate}</span>}
+              {w.calories_burned && <span className="text-secondary">{w.calories_burned} cal</span>}
+              <span className="text-secondary">→</span>
             </div>
           </Link>
         ))}
         {!isLoading && (workouts ?? []).length === 0 && (
-          <p className="text-gray-600 text-sm">No workouts logged yet.</p>
+          <div className="card p-10 text-center">
+            <p className="text-secondary text-sm mb-4">No workouts logged yet</p>
+            <Link to="/workouts/new" className="btn-primary inline-flex">Start your first workout</Link>
+          </div>
         )}
       </div>
 
       <div className="flex gap-4">
         <button onClick={() => setOffset(Math.max(0, offset - LIMIT))} disabled={offset === 0}
-          className="text-sm text-gray-500 hover:text-gray-300 disabled:opacity-30 transition-colors">
+          className="text-sm text-secondary hover:text-primary disabled:opacity-30 transition-colors">
           ← Previous
         </button>
         <button onClick={() => setOffset(offset + LIMIT)} disabled={(workouts ?? []).length < LIMIT}
-          className="text-sm text-gray-500 hover:text-gray-300 disabled:opacity-30 transition-colors">
+          className="text-sm text-secondary hover:text-primary disabled:opacity-30 transition-colors">
           Next →
         </button>
       </div>

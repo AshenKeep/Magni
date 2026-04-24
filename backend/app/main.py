@@ -14,6 +14,8 @@ from app.db.redis import get_redis, close_redis
 from app.services.backup import run_backup
 from app.api.routes.auth import router as auth_router
 from app.api.routes.workouts import router as workouts_router
+from app.api.routes.templates import router as templates_router
+from app.api.routes.admin import router as admin_router
 from app.api.routes.other import (
     exercises_router,
     stats_router,
@@ -22,7 +24,6 @@ from app.api.routes.other import (
 )
 
 logger = logging.getLogger(__name__)
-
 STATIC_DIR = Path("/app/static")
 INDEX = STATIC_DIR / "index.html"
 
@@ -30,29 +31,18 @@ INDEX = STATIC_DIR / "index.html"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-
-    # Redis
     get_redis()
 
-    # Backup scheduler — only starts if backup dir exists (i.e. volume is mounted)
     scheduler = AsyncIOScheduler(timezone=settings.tz)
     cron_parts = settings.backup_schedule.split()
     if len(cron_parts) == 5:
         minute, hour, day, month, day_of_week = cron_parts
         scheduler.add_job(
             run_backup,
-            CronTrigger(
-                minute=minute,
-                hour=hour,
-                day=day,
-                month=month,
-                day_of_week=day_of_week,
-            ),
+            CronTrigger(minute=minute, hour=hour, day=day, month=month, day_of_week=day_of_week),
         )
         scheduler.start()
-        logger.info("Backup scheduler started — schedule: %s %s", settings.backup_schedule, settings.tz)
-    else:
-        logger.warning("Invalid BACKUP_SCHEDULE — backup scheduler not started")
+        logger.info("Backup scheduler started — %s %s", settings.backup_schedule, settings.tz)
 
     yield
 
@@ -91,13 +81,14 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-# API routes
 app.include_router(auth_router, prefix="/api")
 app.include_router(workouts_router, prefix="/api")
 app.include_router(exercises_router, prefix="/api")
 app.include_router(stats_router, prefix="/api")
 app.include_router(sync_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(templates_router, prefix="/api")
+app.include_router(admin_router, prefix="/api")
 
 
 @app.get("/health")
@@ -105,14 +96,6 @@ async def health():
     return {"status": "ok", "version": APP_VERSION}
 
 
-@app.post("/api/backup/run")
-async def manual_backup():
-    """Trigger a backup manually — useful for testing."""
-    run_backup()
-    return {"status": "backup triggered"}
-
-
-# Serve React static assets
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
 

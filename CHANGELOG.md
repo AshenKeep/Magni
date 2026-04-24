@@ -5,6 +5,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.3] — 2026-04-24
+
+### Added
+
+#### Backend
+- `Template` and `TemplateExercise` models — named workout plans with ordered exercises, target sets/reps/weight
+- Migration `0002_templates.py`
+- `POST/GET/PATCH/DELETE /api/templates/` — full template CRUD
+- `POST /api/templates/{id}/exercises` — add exercise to template
+- `DELETE /api/templates/{id}/exercises/{ex_id}` — remove exercise from template
+- `POST /api/templates/{id}/start` — create a new workout pre-filled from a template
+- `POST /api/workouts/{id}/sets` — add a set to a live workout
+- `PATCH /api/workouts/{id}/sets/{set_id}` — update a set in real time
+- `DELETE /api/workouts/{id}/sets/{set_id}` — delete a set
+- `PATCH /api/exercises/{id}` — update an exercise
+- `WorkoutSetUpdate` schema
+- `GET /api/admin/backup/status` — backup status, schedule, NAS path, last backup info
+- `POST /api/admin/backup/run` — manual backup trigger
+- `GET /api/admin/users` — list all users
+- `POST /api/admin/users/reset-password` — reset any user's password
+- `PATCH /api/admin/users/{id}/toggle-active` — enable/disable user accounts
+
+#### Frontend — full redesign
+- OLED black (`#000000`) background, dark grey cards, electric blue (`#5B7FFF`) and magenta (`#CC2ECC`) accents pulled from brand image
+- Tailwind config rebuilt with semantic colour tokens
+- Global CSS component classes (`btn-primary`, `btn-secondary`, `btn-danger`, `card`, `input`, `label`, `badge-blue`, `badge-magenta`)
+- **Dashboard** — stat cards with accent colour borders, quick-start button, recent workouts list
+- **Workouts list** — with "New workout" and "From template" buttons
+- **New/Active workout page** — live timer, exercise picker modal (grouped by muscle), per-exercise set logging (weight, reps, RPE), add set, delete set, finish workout
+- **Workout detail** — sets grouped by exercise, HR chart, delete workout
+- **Exercise library** — full CRUD, muscle group filter, search, grouped display
+- **Templates** — create/edit/delete templates with ordered exercises and target sets/reps/weight, start workout from template
+- **Activity** — 4 charts (steps, resting HR, sleep, active calories), daily breakdown table, 7/30/90 day toggle
+- **Admin** — backup status panel, manual backup trigger, user list with enable/disable, password reset form, system info
+- **Login/Setup** — redesigned with new theme
+- Sidebar updated with all new nav items (Exercises, Templates, Admin)
+- Loading screen with Magni branding
+
+#### Docs
+- README updated — v0.0.3, new API endpoints documented
+- CHANGELOG — this entry
+
+---
+
 ## [0.0.2] — 2026-04-23
 
 ### Added

@@ -2,50 +2,55 @@ import { Outlet, NavLink } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 
 const nav = [
-  { to: "/",         label: "Dashboard", end: true  },
-  { to: "/workouts", label: "Workouts",  end: false },
-  { to: "/activity", label: "Activity",  end: false },
+  { to: "/",          label: "Dashboard",  icon: "⊞", end: true  },
+  { to: "/workouts",  label: "Workouts",   icon: "◈", end: false },
+  { to: "/exercises", label: "Exercises",  icon: "⊕", end: false },
+  { to: "/templates", label: "Templates",  icon: "◧", end: false },
+  { to: "/activity",  label: "Activity",   icon: "♡", end: false },
+  { to: "/admin",     label: "Admin",      icon: "⚙", end: false },
 ];
 
 export default function Layout() {
   const { user, logout } = useAuthStore();
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <aside className="w-52 flex flex-col bg-gray-900 border-r border-gray-800 shrink-0">
-        <div className="px-5 py-5 border-b border-gray-800">
-          <span className="text-brand-400 font-semibold text-lg tracking-wide">Magni</span>
-          <span className="block text-xs text-gray-600 mt-0.5">v0.0.2</span>
+    <div className="flex h-screen overflow-hidden bg-black">
+      {/* Sidebar */}
+      <aside className="w-52 flex flex-col shrink-0 border-r border-border bg-surface">
+        <div className="px-5 py-5 border-b border-border">
+          <span className="text-blue font-bold text-xl tracking-tight">Magni</span>
+          <span className="block text-xs text-secondary mt-0.5">v0.0.3</span>
         </div>
-        <nav className="flex-1 py-4 space-y-1 px-3">
-          {nav.map(({ to, label, end }) => (
+
+        <nav className="flex-1 py-3 px-2 space-y-0.5">
+          {nav.map(({ to, label, icon, end }) => (
             <NavLink
-              key={to}
-              to={to}
-              end={end}
+              key={to} to={to} end={end}
               className={({ isActive }) =>
-                `block px-3 py-2 rounded-lg text-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
                   isActive
-                    ? "bg-brand-600 text-white"
-                    : "text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                    ? "bg-blue-glow text-blue font-medium border border-blue/20"
+                    : "text-secondary hover:bg-card hover:text-primary"
                 }`
               }
             >
+              <span className="text-base w-5 text-center">{icon}</span>
               {label}
             </NavLink>
           ))}
         </nav>
-        <div className="px-4 py-4 border-t border-gray-800">
-          <p className="text-xs text-gray-500 truncate mb-2">{user?.display_name}</p>
-          <button
-            onClick={logout}
-            className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-          >
+
+        <div className="px-4 py-4 border-t border-border">
+          <p className="text-xs text-secondary truncate mb-1">{user?.display_name}</p>
+          <p className="text-xs text-secondary/60 truncate mb-3">{user?.email}</p>
+          <button onClick={logout} className="text-xs text-secondary hover:text-danger transition-colors">
             Sign out
           </button>
         </div>
       </aside>
-      <main className="flex-1 overflow-y-auto">
+
+      {/* Main content */}
+      <main className="flex-1 overflow-y-auto bg-black">
         <Outlet />
       </main>
     </div>
