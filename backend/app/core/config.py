@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
-APP_VERSION = "0.0.4"
+APP_VERSION = "0.0.5"
 
 
 class Settings(BaseSettings):
@@ -20,6 +20,14 @@ class Settings(BaseSettings):
 
     # AscendAPI (ExerciseDB) — for exercise seeding
     ascendapi_key: str = ""  # RapidAPI key for AscendAPI
+
+    # Media storage — for locally cached exercise GIFs
+    # Options: "external" (CDN links only), "local" (local Docker volume), "cifs" (NAS share)
+    media_storage: str = "external"
+    media_dir: str = "/media/exercises"
+    media_cifs_path: str = ""
+    media_cifs_username: str = ""
+    media_cifs_password: str = ""
 
     @property
     def origins_list(self) -> list[str]:

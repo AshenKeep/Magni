@@ -26,6 +26,7 @@ from app.api.routes.other import (
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path("/app/static")
 INDEX = STATIC_DIR / "index.html"
+MEDIA_DIR = Path("/media/exercises")
 
 
 @asynccontextmanager
@@ -102,3 +103,7 @@ if STATIC_DIR.exists():
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         return FileResponse(str(INDEX))
+
+# Serve locally stored exercise GIFs
+if MEDIA_DIR.exists():
+    app.mount("/media/exercises", StaticFiles(directory=str(MEDIA_DIR)), name="media")

@@ -5,6 +5,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.5] — 2026-04-24
+
+### Added
+
+#### Backend
+- Three media storage modes for exercise GIFs: `external` (CDN links), `local` (Docker volume), `cifs` (NAS share)
+- `MEDIA_STORAGE`, `MEDIA_DIR`, `MEDIA_CIFS_PATH/USERNAME/PASSWORD` config settings
+- `download_gif()` in `ascendapi.py` — downloads GIF from CDN and saves to `/media/exercises/`
+- `get_media_dir()` — returns media directory path based on `MEDIA_STORAGE` setting
+- `estimate_requests()` — calculates API quota usage before seeding
+- `GET /api/admin/exercises/seed/estimate` — returns request cost estimate (metadata-only vs with GIFs)
+- `POST /api/admin/exercises/seed?download_gifs=true/false` — two seed modes
+- `POST /api/admin/exercises/download-gifs` — downloads GIFs for already-seeded exercises
+- `GET /api/admin/exercises/media/status` — media storage config and local GIF count
+- `/media/exercises` served as static files by FastAPI when local/CIFS storage is active
+- `media_data` volume in `docker-compose.yml` — configurable as local or CIFS
+
+#### Frontend
+- Admin page — seed panel redesigned with three buttons (metadata only, seed + GIFs, download GIFs for existing)
+- Quota estimates shown before seeding — metadata requests, GIF requests, total, free quota remaining
+- Media storage status indicator — shows current mode and local GIF count
+- "Seed + download GIFs" and "Download GIFs" buttons disabled with explanation when `MEDIA_STORAGE=external`
+- AscendAPI attribution in seed panel with links to ascendapi.com and RapidAPI
+- Setup instructions collapsed into `<details>` to reduce clutter
+- System info panel shows media storage mode and GIF count
+- Version updated to `v0.0.5`
+
+#### Docs
+- README fully rewritten — GitHub Desktop setup section removed entirely
+- README deploy section simplified to `docker compose pull && docker compose up -d`
+- AscendAPI attribution section added to README
+- Exercise seeding section — explains three seed modes and free plan quota strategy
+- Media storage options documented — `external`, `local`, `cifs`
+- `.env.example` updated with `MEDIA_STORAGE`, `MEDIA_CIFS_*`, `MEDIA_VOLUME_*` vars
+- `.env.example` version header updated to `v0.0.5`
+
+---
+
 ## [0.0.4] — 2026-04-24
 
 ### Added

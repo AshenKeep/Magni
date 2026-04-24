@@ -19,7 +19,7 @@ export default function Layout() {
       <aside className="w-52 flex flex-col shrink-0 border-r border-border bg-surface">
         <div className="px-5 py-5 border-b border-border">
           <span className="text-blue font-bold text-xl tracking-tight">Magni</span>
-          <span className="block text-xs text-secondary mt-0.5">v0.0.4</span>
+          <span className="block text-xs text-secondary mt-0.5">v0.0.5</span>
         </div>
 
         <nav className="flex-1 py-3 px-2 space-y-0.5">

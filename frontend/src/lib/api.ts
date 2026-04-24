@@ -100,12 +100,15 @@ export const api = {
   },
 
   admin: {
-    backupStatus:  () => request<BackupStatus>("/api/admin/backup/status"),
-    runBackup:     () => request<{ status: string }>("/api/admin/backup/run", { method: "POST" }),
-    listUsers:     () => request<AdminUser[]>("/api/admin/users"),
-    resetPassword: (email: string, new_password: string) => request<{ status: string }>("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ email, new_password }) }),
-    toggleActive:  (userId: string) => request<{ email: string; is_active: boolean }>(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }),
-    seedExercises: () => request<{ status: string; added: number; skipped: number; total_fetched: number }>("/api/admin/exercises/seed", { method: "POST" }),
+    backupStatus:    () => request<BackupStatus>("/api/admin/backup/status"),
+    runBackup:       () => request<{ status: string }>("/api/admin/backup/run", { method: "POST" }),
+    listUsers:       () => request<AdminUser[]>("/api/admin/users"),
+    resetPassword:   (email: string, new_password: string) => request<{ status: string }>("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ email, new_password }) }),
+    toggleActive:    (userId: string) => request<{ email: string; is_active: boolean }>(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }),
+    seedEstimate:    (downloadGifs: boolean) => request<SeedEstimate>(`/api/admin/exercises/seed/estimate?download_gifs=${downloadGifs}`),
+    seedExercises:   (downloadGifs: boolean) => request<SeedResult>(`/api/admin/exercises/seed?download_gifs=${downloadGifs}`, { method: "POST" }),
+    downloadGifs:    () => request<GifDownloadResult>("/api/admin/exercises/download-gifs", { method: "POST" }),
+    mediaStatus:     () => request<MediaStatus>("/api/admin/exercises/media/status"),
   },
 };
 
@@ -167,3 +170,35 @@ export interface BackupStatus {
 }
 
 export interface AdminUser { id: string; email: string; display_name: string; is_active: boolean; created_at: string; }
+
+export interface SeedEstimate {
+  metadata_requests: number;
+  gif_requests: number;
+  total_requests: number;
+  free_quota: number;
+  remaining_estimate: number;
+}
+
+export interface SeedResult {
+  status: string;
+  added: number;
+  skipped: number;
+  total_fetched: number;
+  gifs_downloaded: number;
+  media_storage: string;
+}
+
+export interface GifDownloadResult {
+  status: string;
+  downloaded: number;
+  skipped_already_local: number;
+  failed: number;
+  total: number;
+}
+
+export interface MediaStatus {
+  media_storage: string;
+  media_dir: string;
+  gif_count: number;
+  cifs_configured: boolean;
+}

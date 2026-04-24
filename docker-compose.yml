@@ -1,10 +1,10 @@
 version: "3.9"
 
-# Magni v0.0.4
+# Magni v0.0.5
 # Single backend container serves the API, React dashboard, and runs scheduled backups.
 # Reverse proxy points everything at port 8000.
 # Postgres and Redis volumes MUST be local — do not mount over CIFS.
-# The backup volume is CIFS-mounted; pg_dump runs inside the backend on a cron schedule.
+# Backup and media volumes support CIFS NAS mounting.
 
 services:
   db:
@@ -25,7 +25,7 @@ services:
     networks:
       - magni_internal
     labels:
-      com.magni.version: "0.0.4"
+      com.magni.version: "0.0.5"
       com.magni.service: "database"
 
   redis:
@@ -43,7 +43,7 @@ services:
     networks:
       - magni_internal
     labels:
-      com.magni.version: "0.0.4"
+      com.magni.version: "0.0.5"
       com.magni.service: "cache"
 
   backend:
@@ -63,6 +63,11 @@ services:
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
       BACKUP_DIR: /backups
       ASCENDAPI_KEY: ${ASCENDAPI_KEY:-}
+      MEDIA_STORAGE: ${MEDIA_STORAGE:-external}
+      MEDIA_DIR: /media/exercises
+      MEDIA_CIFS_PATH: ${MEDIA_CIFS_PATH:-}
+      MEDIA_CIFS_USERNAME: ${MEDIA_CIFS_USERNAME:-}
+      MEDIA_CIFS_PASSWORD: ${MEDIA_CIFS_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
@@ -70,6 +75,7 @@ services:
         condition: service_healthy
     volumes:
       - backup_data:/backups
+      - media_data:/media/exercises
     networks:
       - magni_internal
     healthcheck:
@@ -78,7 +84,7 @@ services:
       timeout: 10s
       retries: 3
     labels:
-      com.magni.version: "0.0.4"
+      com.magni.version: "0.0.5"
       com.magni.service: "backend"
 
 volumes:
@@ -86,13 +92,24 @@ volumes:
   postgres_data:
   redis_data:
 
-  # Backup volume — CIFS NAS share
+  # Backup volume — CIFS NAS share (set CIFS_* vars in .env)
   backup_data:
     driver: local
     driver_opts:
       type: cifs
       device: "${CIFS_PATH}"
       o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
+
+  # Media volume — exercise GIFs
+  # Set MEDIA_STORAGE=local for local Docker volume
+  # Set MEDIA_STORAGE=cifs for NAS share (fill MEDIA_CIFS_* vars)
+  # Set MEDIA_STORAGE=external to skip downloading (CDN links only)
+  media_data:
+    driver: local
+    driver_opts:
+      type: ${MEDIA_VOLUME_TYPE:-none}
+      device: ${MEDIA_VOLUME_DEVICE:-}
+      o: ${MEDIA_VOLUME_OPTIONS:-bind}
 
 networks:
   magni_internal:

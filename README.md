@@ -1,26 +1,17 @@
 # Magni
 
-**Version:** v0.0.4
+**Version:** v0.0.5
 
-A self-hosted fitness tracking system. Log workouts offline on Android, sync Garmin watch data (heart rate, steps, sleep, active calories), and view everything in a web dashboard — all running on your own server.
+A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 
 ---
 
-## How it works
+## Credits
 
-```
-Your server (Docker)                    Your phone (Android app)
-──────────────────────                  ──────────────────────────
-  PostgreSQL                            Workout logger (offline-first)
-  Redis                    ◄──sync──►  Garmin ConnectIQ bridge
-  FastAPI + React (one container)       Background sync engine
-        ▲
-        │ HTTPS (your reverse proxy)
-        │
-  Internet / your LAN
-```
-
-The backend and frontend run as a **single container** — FastAPI serves both the REST API and the React dashboard. Scheduled backups also run inside the same container via APScheduler, writing compressed dumps to a CIFS-mounted NAS volume. Your reverse proxy only needs to point at one port (`8000`).
+Exercise data powered by **[AscendAPI](https://ascendapi.com)** (formerly ExerciseDB) — structured, expert-validated exercise data with GIFs, videos, and instructions.
+- Website: [ascendapi.com](https://ascendapi.com)
+- RapidAPI: [rapidapi.com/user/ascendapi](https://rapidapi.com/user/ascendapi)
+- GitHub: [github.com/ExerciseDB/exercisedb-api](https://github.com/ExerciseDB/exercisedb-api)
 
 ---
 
@@ -28,15 +19,15 @@ The backend and frontend run as a **single container** — FastAPI serves both t
 
 | Service | Purpose |
 |---|---|
-| `magni_backend` | FastAPI API + React frontend + backup scheduler (single container) |
-| `magni_db` | PostgreSQL — persistent data (local volume only) |
+| `magni_backend` | FastAPI API + React dashboard + backup scheduler |
+| `magni_db` | PostgreSQL — all persistent data (local volume only) |
 | `magni_redis` | Redis — sync queue and cache (local volume only) |
 
-> **Important:** Postgres and Redis data volumes must be on local storage. Never mount them over CIFS — Postgres requires POSIX file locking which CIFS does not support. The backup volume goes to CIFS; the live databases do not.
+> **Important:** Postgres and Redis data volumes must stay on local storage — they require POSIX file locking which CIFS does not support. Backup and media volumes support CIFS.
 
 ---
 
-## Part 1 — Docker server & web dashboard
+## Deployment
 
 ### Prerequisites
 
@@ -44,66 +35,43 @@ The backend and frontend run as a **single container** — FastAPI serves both t
 - A domain pointed at your server's public IP (or DDNS — [DuckDNS](https://www.duckdns.org) is free)
 - A reverse proxy handling TLS (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.)
 - Ports 80 and 443 open on your router/firewall
-- A CIFS share on your NAS for backups
 
-### Setting up GitHub and deploying
-
-#### Step 1 — GitHub repo (one time only)
-
-1. Install [GitHub Desktop](https://desktop.github.com) and sign in
-2. **File → New Repository** — name it `magni`, click **Create Repository**
-3. Click **Publish repository**
-4. Copy all files from this zip into the local repo folder
-5. GitHub Desktop will show all files as changes
-6. Commit message: `Initial commit — Magni v0.0.1` → **Commit to main** → **Push origin**
-
-#### Step 2 — Clone and run on your server
+### Deploy
 
 ```bash
+# Clone the repo
 git clone https://github.com/AshenKeep/magni.git
 cd magni
+
+# Configure
 cp .env.example .env
 nano .env   # fill in all values
 
+# Pull images and start
 docker compose pull
 docker compose up -d
-docker compose exec backend alembic upgrade head
 ```
 
-#### Step 3 — Reverse proxy
+### First run
 
-Point your reverse proxy at `http://YOUR_SERVER_IP:8000` for all routes — the frontend dashboard and all `/api/*` endpoints are served from the same container on the same port.
+On first launch, the app detects no users exist and redirects to a setup page where you create your account. The setup page is inaccessible once an account exists.
 
-#### Step 4 — First-time setup
-
-When you open the app for the first time, you'll be automatically redirected to the **setup page** where you create your account. Fill in your name, email and password — you'll be logged straight in. The setup page is permanently inaccessible once an account exists.
-
-### Lost access — emergency recovery
-
-If you lose access to your account, use the CLI inside the backend container to recover without needing to log in:
+### Deploying updates
 
 ```bash
-# Reset a user's password
-docker compose exec backend python -m app.cli reset-password --email you@example.com --password newpassword
-
-# Create a new user account directly
-docker compose exec backend python -m app.cli create-user --email you@example.com --password newpassword --name "Your Name"
-
-# List all accounts
-docker compose exec backend python -m app.cli list-users
+cd magni
+git pull
+docker compose pull
+docker compose up -d
 ```
 
-These commands talk directly to the database and bypass authentication entirely.
+### Reverse proxy
 
-### GitHub secrets required
+Point your reverse proxy at `http://YOUR_SERVER_IP:8000` — both the frontend dashboard and all `/api/*` are served from a single container on a single port.
 
-Go to your repo → **Settings → Secrets and variables → Actions → New repository secret**:
+---
 
-| Secret | Value |
-|---|---|
-| `APP_URL` | `https://gym.yourdomain.com` |
-
-### docker-compose.yml
+## docker-compose.yml
 
 ```yaml
 version: "3.9"
@@ -134,11 +102,6 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     networks:
       - magni_internal
 
@@ -158,6 +121,9 @@ services:
       TZ: ${TZ:-UTC}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
       BACKUP_DIR: /backups
+      ASCENDAPI_KEY: ${ASCENDAPI_KEY:-}
+      MEDIA_STORAGE: ${MEDIA_STORAGE:-external}
+      MEDIA_DIR: /media/exercises
     depends_on:
       db:
         condition: service_healthy
@@ -165,6 +131,7 @@ services:
         condition: service_healthy
     volumes:
       - backup_data:/backups
+      - media_data:/media/exercises
     networks:
       - magni_internal
 
@@ -177,39 +144,21 @@ volumes:
       type: cifs
       device: "${CIFS_PATH}"
       o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
+  media_data:
+    driver: local
+    driver_opts:
+      type: ${MEDIA_VOLUME_TYPE:-none}
+      device: ${MEDIA_VOLUME_DEVICE:-}
+      o: ${MEDIA_VOLUME_OPTIONS:-bind}
 
 networks:
   magni_internal:
     driver: bridge
 ```
 
-### Local testing (no reverse proxy)
+---
 
-```bash
-cp .env.example .env
-# Set ENVIRONMENT=development in .env
-docker compose pull
-docker compose up -d
-docker compose exec backend alembic upgrade head
-```
-
-Then open:
-- `http://localhost:8000` — React dashboard
-- `http://localhost:8000/api/docs` — Swagger API docs (development mode only)
-- `http://localhost:8000/health` — health check
-
-### Deploying updates
-
-```bash
-cd magni
-git pull
-docker compose pull
-docker compose up -d
-# If the update includes migrations:
-docker compose exec backend alembic upgrade head
-```
-
-### Environment variables
+## Environment variables
 
 | Variable | Description |
 |---|---|
@@ -220,56 +169,98 @@ docker compose exec backend alembic upgrade head
 | `SECRET_KEY` | JWT signing key — `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENVIRONMENT` | `production` or `development` |
 | `BACKEND_PORT` | Port exposed to host (default `8000`) |
-| `TZ` | Timezone e.g. `Australia/Perth` (used by backup scheduler) |
-| `BACKUP_SCHEDULE` | Cron schedule for backups (default `0 2 * * *` — 2am daily) |
-| `BACKUP_DIR` | Path inside the container where backups are written (default `/backups`) |
-| `CIFS_PATH` | NAS share path e.g. `//192.168.1.x/backups` |
+| `TZ` | Timezone e.g. `Australia/Perth` |
+| `BACKUP_SCHEDULE` | Cron schedule (default `0 2 * * *` — 2am daily) |
+| `BACKUP_DIR` | Backup path in container (default `/backups`) |
+| `CIFS_PATH` | NAS backup share e.g. `//192.168.1.x/backups` |
 | `CIFS_USERNAME` | NAS username |
 | `CIFS_PASSWORD` | NAS password |
+| `ASCENDAPI_KEY` | RapidAPI key for AscendAPI exercise seeding |
+| `MEDIA_STORAGE` | `external` / `local` / `cifs` (default `external`) |
+| `MEDIA_CIFS_PATH` | NAS media share (when `MEDIA_STORAGE=cifs`) |
+| `MEDIA_CIFS_USERNAME` | NAS username for media |
+| `MEDIA_CIFS_PASSWORD` | NAS password for media |
+| `MEDIA_VOLUME_TYPE` | Docker volume type (`none` for local, `cifs` for NAS) |
+| `MEDIA_VOLUME_DEVICE` | Volume device path (NAS path when using cifs) |
+| `MEDIA_VOLUME_OPTIONS` | Volume mount options |
 
-### Useful commands
+---
+
+## Exercise library seeding (AscendAPI)
+
+Magni integrates with [AscendAPI](https://ascendapi.com) to seed your exercise library with data, GIFs, and instructions.
+
+**Free plan: 2,000 requests/month, no credit card required.**
+
+### Setup
+
+1. Sign up at [rapidapi.com](https://rapidapi.com)
+2. Search for **"EDB with Videos and Images by AscendAPI"** → Subscribe (Basic, free)
+3. Copy your `X-RapidAPI-Key` → add to `.env` as `ASCENDAPI_KEY`
+4. Restart: `docker compose up -d`
+5. Go to **Admin → Exercise Library** and choose a seed mode
+
+### Seed modes
+
+| Mode | API requests | Result |
+|---|---|---|
+| **Seed metadata only** | ~9 | Exercise names, muscles, instructions. GIFs load from AscendAPI CDN |
+| **Seed + download GIFs** | ~9 + N | Full data + GIFs saved to your server (local or NAS) |
+| **Download GIFs for existing** | ~N | Cache GIFs for already-seeded exercises |
+
+**Tip for free plan users:** Seed metadata first (~9 requests), use the app for a while, then download GIFs (~225 requests) in a separate month to stay well within the 2,000/month quota.
+
+### Media storage options
+
+Set `MEDIA_STORAGE` in `.env`:
+
+- `external` — GIFs served from AscendAPI CDN (default, no storage needed)
+- `local` — GIFs downloaded to a local Docker volume
+- `cifs` — GIFs downloaded to a CIFS NAS share
+
+---
+
+## Lost access — emergency recovery
 
 ```bash
-# View logs
-docker compose logs -f backend
+# Reset a user's password
+docker compose exec backend python -m app.cli reset-password --email you@example.com --password newpassword
 
-# Restart
-docker compose restart backend
+# Create a new user
+docker compose exec backend python -m app.cli create-user --email you@example.com --password newpassword --name "Your Name"
 
-# Database shell
-docker compose exec db psql -U magni magni
-
-# Trigger a manual backup immediately
-curl -X POST http://localhost:8000/api/backup/run
-
-# Stop everything
-docker compose down
-
-# Stop and wipe all data (irreversible)
-docker compose down -v
+# List all accounts
+docker compose exec backend python -m app.cli list-users
 ```
 
-### Backups
+---
 
-Backups run automatically inside the backend container on the schedule set by `BACKUP_SCHEDULE`. Files are written to the CIFS-mounted NAS volume as `magni_backup_YYYYMMDD_HHMMSS.sql.gz` and auto-deleted after 30 days.
+## Backup & restore
 
-To trigger a backup manually:
+Backups run automatically per `BACKUP_SCHEDULE`. Files are written as `magni_backup_YYYYMMDD_HHMMSS.sql.gz`, kept for 30 days.
+
+**Trigger manually:**
 ```bash
-curl -X POST http://localhost:8000/api/backup/run
+curl -X POST http://localhost:8000/api/admin/backup/run \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-To restore from a backup:
+**Restore:**
 ```bash
 gunzip -c magni_backup_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db psql -U magni magni
 ```
 
 ---
 
-## Part 2 — Android app
+## Useful commands
 
-> Coming in the next build phase.
-
-Kotlin + Jetpack Compose. Offline-first workout logging, Garmin ConnectIQ bridge (all watch families), background sync to this server.
+```bash
+docker compose logs -f backend     # live logs
+docker compose restart backend     # restart backend
+docker compose exec db psql -U magni magni  # database shell
+docker compose down                # stop everything
+docker compose down -v             # stop and wipe all data (irreversible)
+```
 
 ---
 
@@ -279,25 +270,36 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/auth/setup-required` | Returns `{"required": true}` if no accounts exist |
-| `POST` | `/api/auth/setup` | Create first account (only works if no users exist) |
-| `POST` | `/api/auth/register` | Create account |
+| `GET` | `/api/auth/setup-required` | First-run setup check |
+| `POST` | `/api/auth/setup` | Create first account |
 | `POST` | `/api/auth/login` | Get JWT token |
 | `GET` | `/api/auth/me` | Current user |
 | `GET` | `/api/dashboard/` | Summary stats |
-| `POST` | `/api/workouts/` | Log a workout |
+| `POST` | `/api/workouts/` | Create workout |
 | `GET` | `/api/workouts/` | List workouts |
 | `GET` | `/api/workouts/{id}` | Workout detail |
 | `PATCH` | `/api/workouts/{id}` | Update workout |
 | `DELETE` | `/api/workouts/{id}` | Delete workout |
+| `POST` | `/api/workouts/{id}/sets` | Add set |
+| `PATCH` | `/api/workouts/{id}/sets/{set_id}` | Update set |
+| `DELETE` | `/api/workouts/{id}/sets/{set_id}` | Delete set |
 | `POST` | `/api/exercises/` | Add exercise |
 | `GET` | `/api/exercises/` | List exercises |
-| `POST` | `/api/stats/daily` | Upsert daily Garmin stats |
+| `PATCH` | `/api/exercises/{id}` | Update exercise |
+| `DELETE` | `/api/exercises/{id}` | Delete exercise |
+| `POST` | `/api/templates/` | Create template |
+| `GET` | `/api/templates/` | List templates |
+| `POST` | `/api/templates/{id}/start` | Start workout from template |
+| `POST` | `/api/stats/daily` | Upsert Garmin daily stats |
 | `GET` | `/api/stats/daily` | Query daily stats |
 | `POST` | `/api/stats/hr` | Bulk insert HR readings |
-| `GET` | `/api/stats/hr` | Query HR time-series |
 | `POST` | `/api/sync/` | Batch sync from Android |
-| `POST` | `/api/backup/run` | Trigger manual backup |
+| `GET` | `/api/admin/backup/status` | Backup status |
+| `POST` | `/api/admin/backup/run` | Manual backup |
+| `GET` | `/api/admin/exercises/seed/estimate` | Quota estimate |
+| `POST` | `/api/admin/exercises/seed` | Seed exercises |
+| `POST` | `/api/admin/exercises/download-gifs` | Cache GIFs locally |
+| `GET` | `/api/admin/exercises/media/status` | Media storage status |
 | `GET` | `/health` | Health check + version |
 
 ---
