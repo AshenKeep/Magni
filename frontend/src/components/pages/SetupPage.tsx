@@ -1,15 +1,17 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { setToken } from "@/lib/api";
 
-export default function SetupPage() {
+interface Props {
+  onComplete: () => void;
+}
+
+export default function SetupPage({ onComplete }: Props) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail]             = useState("");
   const [password, setPassword]       = useState("");
   const [confirm, setConfirm]         = useState("");
   const [error, setError]             = useState("");
   const [loading, setLoading]         = useState(false);
-  const navigate = useNavigate();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,7 +41,7 @@ export default function SetupPage() {
 
       const { access_token } = await res.json();
       setToken(access_token);
-      navigate("/");
+      onComplete();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Setup failed");
     } finally {
