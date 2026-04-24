@@ -38,8 +38,13 @@ class Exercise(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     muscle_group: Mapped[Optional[str]] = mapped_column(String(100))
+    secondary_muscles: Mapped[Optional[str]] = mapped_column(Text)  # JSON array stored as string
     equipment: Mapped[Optional[str]] = mapped_column(String(100))
     notes: Mapped[Optional[str]] = mapped_column(Text)
+    instructions: Mapped[Optional[str]] = mapped_column(Text)       # Step-by-step instructions
+    gif_url: Mapped[Optional[str]] = mapped_column(String(500))     # AscendAPI GIF/image URL
+    video_url: Mapped[Optional[str]] = mapped_column(String(500))   # AscendAPI video URL
+    ascendapi_id: Mapped[Optional[str]] = mapped_column(String(100)) # External ID for deduplication
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="exercises")

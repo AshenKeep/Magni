@@ -38,6 +38,10 @@ export default function AdminPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
+  const seedMutation = useMutation({
+    mutationFn: api.admin.seedExercises,
+  });
+
   return (
     <div className="p-8 space-y-8 max-w-4xl">
       <h1 className="text-2xl font-bold text-primary">Admin</h1>
@@ -143,6 +147,53 @@ export default function AdminPage() {
           >
             {resetPasswordMutation.isPending ? "Updating…" : "Reset password"}
           </button>
+        </div>
+      </div>
+
+      {/* Exercise seeding */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-4 border-b border-border bg-card flex items-center justify-between">
+          <div>
+            <p className="font-medium text-primary">Exercise Library — AscendAPI Seed</p>
+            <p className="text-xs text-secondary mt-0.5">Imports exercises with GIFs and instructions from AscendAPI (ExerciseDB)</p>
+          </div>
+          <button
+            onClick={() => seedMutation.mutate()}
+            disabled={seedMutation.isPending}
+            className="btn-magenta text-xs"
+          >
+            {seedMutation.isPending ? "Seeding…" : "⬇ Seed exercises"}
+          </button>
+        </div>
+        <div className="p-5">
+          {!seedMutation.isIdle && !seedMutation.isPending && (
+            seedMutation.isSuccess ? (
+              <div className="bg-success/10 border border-success/30 text-success text-sm rounded-lg px-4 py-3">
+                ✓ Done — {seedMutation.data.added} exercises added, {seedMutation.data.skipped} already existed
+              </div>
+            ) : (
+              <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">
+                {seedMutation.error instanceof Error ? seedMutation.error.message : "Seed failed"}
+              </div>
+            )
+          )}
+          {seedMutation.isIdle && (
+            <div className="space-y-2 text-xs text-secondary">
+              <p>Requirements before seeding:</p>
+              <ol className="list-decimal list-inside space-y-1 ml-2">
+                <li>Sign up at <a href="https://rapidapi.com" target="_blank" rel="noreferrer" className="text-blue hover:underline">rapidapi.com</a></li>
+                <li>Search for <span className="text-primary font-mono">"EDB with Videos and Images by AscendAPI"</span></li>
+                <li>Subscribe to the Basic plan (free, no card required)</li>
+                <li>Copy your <span className="text-primary font-mono">X-RapidAPI-Key</span> and add it to <span className="text-primary font-mono">.env</span> as <span className="text-primary font-mono">ASCENDAPI_KEY</span></li>
+                <li>Restart the backend container</li>
+              </ol>
+            </div>
+          )}
+          {seedMutation.isPending && (
+            <div className="text-sm text-secondary animate-pulse">
+              Fetching exercises from AscendAPI… this may take 20–30 seconds
+            </div>
+          )}
         </div>
       </div>
 

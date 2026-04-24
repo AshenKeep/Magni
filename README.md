@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.3
+**Version:** v0.0.4
 
 A self-hosted fitness tracking system. Log workouts offline on Android, sync Garmin watch data (heart rate, steps, sleep, active calories), and view everything in a web dashboard — all running on your own server.
 

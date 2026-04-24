@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.session import get_db
-from app.models.models import User
+from app.models.models import User, Exercise
 from app.schemas.schemas import (
     BackupStatus, BackupConfigUpdate,
     AdminUserResponse, PasswordResetRequest,
@@ -15,6 +15,7 @@ from app.schemas.schemas import (
 from app.core.security import get_current_user_id, hash_password
 from app.core.config import get_settings
 from app.services.backup import run_backup
+from app.services.ascendapi import fetch_all_exercises, normalize_exercise
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -92,3 +93,64 @@ async def toggle_active(
     user.is_active = not user.is_active
     await db.flush()
     return {"email": user.email, "is_active": user.is_active}
+
+
+# ---------------------------------------------------------------------------
+# Exercise seeding from AscendAPI
+# ---------------------------------------------------------------------------
+
+@router.post("/exercises/seed")
+async def seed_exercises(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Fetches exercises from AscendAPI (ExerciseDB) and seeds the exercise library.
+    Skips exercises already imported (matched by ascendapi_id).
+    Requires ASCENDAPI_KEY to be set in .env.
+    """
+    settings = get_settings()
+    if not settings.ascendapi_key:
+        raise HTTPException(
+            status_code=400,
+            detail="ASCENDAPI_KEY is not configured. Add it to your .env file.",
+        )
+
+    try:
+        raw_exercises = await fetch_all_exercises(limit_per_part=25)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AscendAPI error: {str(e)}")
+
+    added = 0
+    skipped = 0
+
+    for raw in raw_exercises:
+        normalized = normalize_exercise(raw)
+        ascendapi_id = normalized.get("ascendapi_id")
+
+        # Skip if already imported
+        if ascendapi_id:
+            existing = await db.execute(
+                select(Exercise).where(
+                    Exercise.user_id == user_id,
+                    Exercise.ascendapi_id == ascendapi_id,
+                )
+            )
+            if existing.scalar_one_or_none():
+                skipped += 1
+                continue
+
+        exercise = Exercise(user_id=user_id, **normalized)
+        db.add(exercise)
+        added += 1
+
+    await db.flush()
+
+    return {
+        "status": "ok",
+        "added": added,
+        "skipped": skipped,
+        "total_fetched": len(raw_exercises),
+    }

@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
-APP_VERSION = "0.0.3"
+APP_VERSION = "0.0.4"
 
 
 class Settings(BaseSettings):
@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     backup_dir: str = "/backups"
     backup_schedule: str = "0 2 * * *"  # cron — default 2am daily
     tz: str = "UTC"
+
+    # AscendAPI (ExerciseDB) — for exercise seeding
+    ascendapi_key: str = ""  # RapidAPI key for AscendAPI
 
     @property
     def origins_list(self) -> list[str]:

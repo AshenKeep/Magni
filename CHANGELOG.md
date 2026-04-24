@@ -5,6 +5,34 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.4] — 2026-04-24
+
+### Added
+
+#### Backend
+- `secondary_muscles`, `instructions`, `gif_url`, `video_url`, `ascendapi_id` fields on `Exercise` model
+- Migration `0003_exercise_media.py`
+- `app/services/ascendapi.py` — AscendAPI (ExerciseDB) client: fetches exercises by body part, normalises muscle groups and equipment, maps to internal schema
+- `POST /api/admin/exercises/seed` — imports exercises from AscendAPI into the user's library, skips duplicates by `ascendapi_id`, returns added/skipped counts
+- `ASCENDAPI_KEY` setting in config, passed via env var
+- `ExerciseCreate` and `ExerciseResponse` schemas updated with all new fields
+- `WorkoutSetUpdate` schema — supports partial updates for reps, weight, RPE during live logging
+
+#### Frontend
+- **Exercise Library** — GIF thumbnails in exercise list, exercise detail modal with full GIF, step-by-step instructions, muscle badges, secondary muscles
+- **Exercise form** — instructions field, GIF URL field added for manual entry
+- **New Workout page** — exercise picker shows GIF thumbnails next to exercise names
+- **Templates** — empty exercise library state shows helpful message directing to Admin → Seed or Exercise Library
+- **Admin page** — AscendAPI seed panel with setup instructions, seed button, result feedback (added/skipped counts)
+- Admin page version updated to `v0.0.4`
+
+#### Config
+- `ASCENDAPI_KEY` added to `.env.example` with signup instructions
+- `ASCENDAPI_KEY` added to `docker-compose.yml` backend environment
+- `.env.example` version header updated to `v0.0.4`
+
+---
+
 ## [0.0.3] — 2026-04-24
 
 ### Added

@@ -59,44 +59,55 @@ function TemplateModal({ template, exercises, onClose }: {
           {/* Exercise rows */}
           <div>
             <label className="label">Exercises</label>
-            <div className="space-y-2">
-              {exRows.map((row, i) => (
-                <div key={i} className="card p-3 space-y-2">
-                  <div className="flex gap-2 items-center">
-                    <select value={row.exercise_id}
-                      onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, exercise_id: e.target.value } : r))}
-                      className="input flex-1 text-sm">
-                      {exercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
-                    </select>
-                    <button onClick={() => setExRows(prev => prev.filter((_, idx) => idx !== i))}
-                      className="text-secondary hover:text-danger transition-colors text-lg px-1">×</button>
+            {exercises.length === 0 ? (
+              <div className="card p-5 text-center space-y-2">
+                <p className="text-sm text-secondary">No exercises in your library yet</p>
+                <p className="text-xs text-secondary/60">
+                  Go to <span className="text-blue">Admin → Seed exercises</span> to import from AscendAPI,
+                  or add exercises manually in the <span className="text-blue">Exercise Library</span>
+                </p>
+              </div>
+            ) : (
+            ) : (
+              <div className="space-y-2">
+                {exRows.map((row, i) => (
+                  <div key={i} className="card p-3 space-y-2">
+                    <div className="flex gap-2 items-center">
+                      <select value={row.exercise_id}
+                        onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, exercise_id: e.target.value } : r))}
+                        className="input flex-1 text-sm">
+                        {exercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+                      </select>
+                      <button onClick={() => setExRows(prev => prev.filter((_, idx) => idx !== i))}
+                        className="text-secondary hover:text-danger transition-colors text-lg px-1">×</button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="label">Sets</label>
+                        <input type="number" value={row.target_sets} min={1}
+                          onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, target_sets: Number(e.target.value) } : r))}
+                          className="input text-sm" />
+                      </div>
+                      <div>
+                        <label className="label">Reps</label>
+                        <input type="number" value={row.target_reps} min={1}
+                          onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, target_reps: Number(e.target.value) } : r))}
+                          className="input text-sm" />
+                      </div>
+                      <div>
+                        <label className="label">Weight (kg)</label>
+                        <input type="number" value={row.target_weight_kg} min={0} step={0.5}
+                          onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, target_weight_kg: Number(e.target.value) } : r))}
+                          className="input text-sm" />
+                      </div>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="label">Sets</label>
-                      <input type="number" value={row.target_sets} min={1}
-                        onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, target_sets: Number(e.target.value) } : r))}
-                        className="input text-sm" />
-                    </div>
-                    <div>
-                      <label className="label">Reps</label>
-                      <input type="number" value={row.target_reps} min={1}
-                        onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, target_reps: Number(e.target.value) } : r))}
-                        className="input text-sm" />
-                    </div>
-                    <div>
-                      <label className="label">Weight (kg)</label>
-                      <input type="number" value={row.target_weight_kg} min={0} step={0.5}
-                        onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, target_weight_kg: Number(e.target.value) } : r))}
-                        className="input text-sm" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <button onClick={addRow} className="w-full py-2 text-sm text-blue border border-dashed border-blue/30 rounded-lg hover:bg-blue-glow transition-colors">
-                + Add exercise
-              </button>
-            </div>
+                ))}
+                <button onClick={addRow} className="w-full py-2 text-sm text-blue border border-dashed border-blue/30 rounded-lg hover:bg-blue-glow transition-colors">
+                  + Add exercise
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3 pt-2">

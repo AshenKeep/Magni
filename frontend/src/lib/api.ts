@@ -105,6 +105,7 @@ export const api = {
     listUsers:     () => request<AdminUser[]>("/api/admin/users"),
     resetPassword: (email: string, new_password: string) => request<{ status: string }>("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ email, new_password }) }),
     toggleActive:  (userId: string) => request<{ email: string; is_active: boolean }>(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }),
+    seedExercises: () => request<{ status: string; added: number; skipped: number; total_fetched: number }>("/api/admin/exercises/seed", { method: "POST" }),
   },
 };
 
@@ -142,7 +143,7 @@ export interface WorkoutSetCreate {
   exercise_id: string; set_number: number; reps?: number; weight_kg?: number; rpe?: number; notes?: string; client_id?: string;
 }
 
-export interface ExerciseResponse { id: string; name: string; muscle_group: string | null; equipment: string | null; notes: string | null; created_at: string; }
+export interface ExerciseResponse { id: string; name: string; muscle_group: string | null; secondary_muscles: string | null; equipment: string | null; notes: string | null; instructions: string | null; gif_url: string | null; video_url: string | null; ascendapi_id: string | null; created_at: string; }
 
 export interface TemplateExerciseCreate { exercise_id: string; order?: number; target_sets?: number; target_reps?: number; target_weight_kg?: number; notes?: string; }
 
