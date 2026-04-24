@@ -9,7 +9,6 @@ function TemplateModal({ template, exercises, onClose }: {
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const navigate = useNavigate();
   const [name, setName] = useState(template?.name ?? "");
   const [notes, setNotes] = useState(template?.notes ?? "");
   const [exRows, setExRows] = useState<{ exercise_id: string; target_sets: number; target_reps: number; target_weight_kg: number; order: number }[]>(
@@ -22,8 +21,6 @@ function TemplateModal({ template, exercises, onClose }: {
     })) ?? []
   );
   const [error, setError] = useState("");
-
-  const exerciseMap = exercises.reduce((acc, e) => { acc[e.id] = e.name; return acc; }, {} as Record<string, string>);
 
   const save = useMutation({
     mutationFn: () => template
@@ -38,6 +35,8 @@ function TemplateModal({ template, exercises, onClose }: {
     setExRows(prev => [...prev, { exercise_id: exercises[0].id, target_sets: 3, target_reps: 10, target_weight_kg: 0, order: prev.length }]);
   }
 
+  const hasExercises = exercises.length > 0;
+
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-surface border border-border rounded-2xl w-full max-w-lg my-4">
@@ -46,7 +45,9 @@ function TemplateModal({ template, exercises, onClose }: {
           <button onClick={onClose} className="text-secondary hover:text-primary text-xl">×</button>
         </div>
         <div className="p-5 space-y-4">
-          {error && <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">{error}</div>}
+          {error && (
+            <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">{error}</div>
+          )}
           <div>
             <label className="label">Template name</label>
             <input value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="e.g. Push Day A" />
@@ -56,10 +57,9 @@ function TemplateModal({ template, exercises, onClose }: {
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="input resize-none h-16" />
           </div>
 
-          {/* Exercise rows */}
           <div>
             <label className="label">Exercises</label>
-            {exercises.length === 0 ? (
+            {!hasExercises ? (
               <div className="card p-5 text-center space-y-2">
                 <p className="text-sm text-secondary">No exercises in your library yet</p>
                 <p className="text-xs text-secondary/60">
@@ -68,18 +68,21 @@ function TemplateModal({ template, exercises, onClose }: {
                 </p>
               </div>
             ) : (
-            ) : (
               <div className="space-y-2">
                 {exRows.map((row, i) => (
                   <div key={i} className="card p-3 space-y-2">
                     <div className="flex gap-2 items-center">
-                      <select value={row.exercise_id}
+                      <select
+                        value={row.exercise_id}
                         onChange={(e) => setExRows(prev => prev.map((r, idx) => idx === i ? { ...r, exercise_id: e.target.value } : r))}
-                        className="input flex-1 text-sm">
+                        className="input flex-1 text-sm"
+                      >
                         {exercises.map(ex => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
                       </select>
-                      <button onClick={() => setExRows(prev => prev.filter((_, idx) => idx !== i))}
-                        className="text-secondary hover:text-danger transition-colors text-lg px-1">×</button>
+                      <button
+                        onClick={() => setExRows(prev => prev.filter((_, idx) => idx !== i))}
+                        className="text-secondary hover:text-danger transition-colors text-lg px-1"
+                      >×</button>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div>
@@ -103,7 +106,10 @@ function TemplateModal({ template, exercises, onClose }: {
                     </div>
                   </div>
                 ))}
-                <button onClick={addRow} className="w-full py-2 text-sm text-blue border border-dashed border-blue/30 rounded-lg hover:bg-blue-glow transition-colors">
+                <button
+                  onClick={addRow}
+                  className="w-full py-2 text-sm text-blue border border-dashed border-blue/30 rounded-lg hover:bg-blue-glow transition-colors"
+                >
                   + Add exercise
                 </button>
               </div>
@@ -112,7 +118,11 @@ function TemplateModal({ template, exercises, onClose }: {
 
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-            <button onClick={() => save.mutate()} disabled={!name || save.isPending} className="btn-primary flex-1">
+            <button
+              onClick={() => save.mutate()}
+              disabled={!name || save.isPending}
+              className="btn-primary flex-1"
+            >
               {save.isPending ? "Saving…" : "Save template"}
             </button>
           </div>
@@ -161,8 +171,10 @@ export default function TemplatesPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setModal(t)} className="text-xs text-blue hover:text-blue-dim transition-colors">Edit</button>
-                <button onClick={() => { if (confirm(`Delete "${t.name}"?`)) deleteMutation.mutate(t.id); }}
-                  className="text-xs text-secondary hover:text-danger transition-colors">Delete</button>
+                <button
+                  onClick={() => { if (confirm(`Delete "${t.name}"?`)) deleteMutation.mutate(t.id); }}
+                  className="text-xs text-secondary hover:text-danger transition-colors"
+                >Delete</button>
               </div>
             </div>
 
@@ -188,15 +200,18 @@ export default function TemplatesPage() {
             </button>
           </div>
         ))}
+
         {!isLoading && (templates ?? []).length === 0 && (
           <div className="card p-10 text-center col-span-2">
             <p className="text-secondary text-sm mb-4">No templates yet</p>
-            <button onClick={() => setModal("new")} className="btn-primary inline-flex">Create your first template</button>
+            <button onClick={() => setModal("new")} className="btn-primary inline-flex">
+              Create your first template
+            </button>
           </div>
         )}
       </div>
 
-      {modal && exercises && (
+      {modal !== null && exercises && (
         <TemplateModal
           template={modal === "new" ? undefined : modal}
           exercises={exercises}
