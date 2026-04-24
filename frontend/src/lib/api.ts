@@ -72,8 +72,8 @@ export const api = {
 
   exercises: {
     list:   () => request<ExerciseResponse[]>("/api/exercises/"),
-    create: (body: { name: string; muscle_group?: string; equipment?: string; notes?: string }) => request<ExerciseResponse>("/api/exercises/", { method: "POST", body: JSON.stringify(body) }),
-    update: (id: string, body: { name?: string; muscle_group?: string; equipment?: string; notes?: string }) => request<ExerciseResponse>(`/api/exercises/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    create: (body: { name: string; muscle_group?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string; ascendapi_id?: string }) => request<ExerciseResponse>("/api/exercises/", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: { name?: string; muscle_group?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string }) => request<ExerciseResponse>(`/api/exercises/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     delete: (id: string) => request<void>(`/api/exercises/${id}`, { method: "DELETE" }),
   },
 
