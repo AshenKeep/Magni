@@ -102,6 +102,11 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - magni_internal
 
