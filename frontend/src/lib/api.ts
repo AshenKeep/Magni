@@ -109,6 +109,7 @@ export const api = {
     seedExercises:   (downloadGifs: boolean) => request<SeedResult>(`/api/admin/exercises/seed?download_gifs=${downloadGifs}`, { method: "POST" }),
     downloadGifs:    () => request<GifDownloadResult>("/api/admin/exercises/download-gifs", { method: "POST" }),
     mediaStatus:     () => request<MediaStatus>("/api/admin/exercises/media/status"),
+    seedLogs:        () => request<SeedLogEntry[]>("/api/admin/logs/seed"),
   },
 };
 
@@ -201,4 +202,19 @@ export interface MediaStatus {
   media_dir: string;
   gif_count: number;
   cifs_configured: boolean;
+  api_key_configured: boolean;
+  api_key_preview: string;
+}
+
+export interface SeedLogEntry {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  mode: string;
+  status: string;
+  added: number;
+  skipped: number;
+  gifs_downloaded: number;
+  log_output: string | null;
+  error: string | null;
 }

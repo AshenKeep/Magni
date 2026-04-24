@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, SeedResult, GifDownloadResult } from "@/lib/api";
+import { api, SeedResult, GifDownloadResult, SeedLogEntry } from "@/lib/api";
 import { format } from "date-fns";
 
 function fmtBytes(bytes: number | null): string {
@@ -42,9 +42,10 @@ export default function AdminPage() {
 
   const { data: backupStatus } = useQuery({ queryKey: ["backup-status"], queryFn: api.admin.backupStatus });
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: api.admin.listUsers });
-  const { data: mediaStatus } = useQuery({ queryKey: ["media-status"], queryFn: api.admin.mediaStatus });
+  const { data: mediaStatus, refetch: refetchMedia } = useQuery({ queryKey: ["media-status"], queryFn: api.admin.mediaStatus });
   const { data: estimateMeta }  = useQuery({ queryKey: ["seed-estimate", false], queryFn: () => api.admin.seedEstimate(false) });
   const { data: estimateGifs }  = useQuery({ queryKey: ["seed-estimate", true],  queryFn: () => api.admin.seedEstimate(true) });
+  const { data: seedLogs, refetch: refetchLogs } = useQuery({ queryKey: ["seed-logs"], queryFn: api.admin.seedLogs });
 
   const runBackup = useMutation({
     mutationFn: api.admin.runBackup,
@@ -70,8 +71,10 @@ export default function AdminPage() {
       setSeedResult(result);
       qc.invalidateQueries({ queryKey: ["exercises"] });
       qc.invalidateQueries({ queryKey: ["media-status"] });
+      refetchLogs();
     } catch (e: unknown) {
       setSeedError(e instanceof Error ? e.message : "Seed failed");
+      refetchLogs();
     }
   }
 
@@ -82,8 +85,10 @@ export default function AdminPage() {
       const result = await api.admin.downloadGifs();
       setSeedResult(result);
       qc.invalidateQueries({ queryKey: ["media-status"] });
+      refetchLogs();
     } catch (e: unknown) {
       setSeedError(e instanceof Error ? e.message : "Download failed");
+      refetchLogs();
     }
   }
 
@@ -134,6 +139,27 @@ export default function AdminPage() {
         </div>
 
         <div className="p-5 space-y-5">
+          {/* API key status */}
+          <div className={`flex items-center gap-3 p-3 rounded-lg border ${
+            mediaStatus?.api_key_configured
+              ? "bg-success/10 border-success/30"
+              : "bg-danger/10 border-danger/30"
+          }`}>
+            <div className={`w-2 h-2 rounded-full shrink-0 ${mediaStatus?.api_key_configured ? "bg-success" : "bg-danger"}`} />
+            <div>
+              <p className="text-sm text-primary">
+                API key: {mediaStatus?.api_key_configured
+                  ? <span className="text-success font-mono">{mediaStatus.api_key_preview} ✓</span>
+                  : <span className="text-danger">Not configured</span>}
+              </p>
+              {!mediaStatus?.api_key_configured && (
+                <p className="text-xs text-danger/80 mt-0.5">
+                  Add <span className="font-mono">ASCENDAPI_KEY=your_key</span> to <span className="font-mono">.env</span> then run <span className="font-mono">docker compose up -d</span>
+                </p>
+              )}
+            </div>
+          </div>
+
           {/* Media storage status */}
           <div className="flex items-center gap-3 p-3 bg-surface rounded-lg border border-border">
             <div className={`w-2 h-2 rounded-full shrink-0 ${
@@ -222,6 +248,51 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      {/* Seed logs */}
+      {(seedLogs ?? []).length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="px-5 py-4 border-b border-border bg-card flex items-center justify-between">
+            <p className="font-medium text-primary">Seed History</p>
+            <button onClick={() => refetchLogs()} className="text-xs text-secondary hover:text-primary transition-colors">↻ Refresh</button>
+          </div>
+          <div className="divide-y divide-border/40">
+            {(seedLogs ?? []).map((log: SeedLogEntry) => (
+              <details key={log.id} className="group">
+                <summary className="px-5 py-3 flex items-center gap-3 cursor-pointer hover:bg-card/50 transition-colors list-none">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${
+                    log.status === "success" ? "bg-success" :
+                    log.status === "error"   ? "bg-danger" : "bg-warning animate-pulse"
+                  }`} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-primary">
+                      {log.mode.replace(/_/g, " ")} ·{" "}
+                      <span className={log.status === "success" ? "text-success" : log.status === "error" ? "text-danger" : "text-warning"}>
+                        {log.status}
+                      </span>
+                    </p>
+                    <p className="text-xs text-secondary">
+                      {format(new Date(log.started_at), "d MMM yyyy HH:mm:ss")}
+                      {log.status === "success" && ` · +${log.added} added · ${log.skipped} skipped`}
+                      {log.gifs_downloaded > 0 && ` · ${log.gifs_downloaded} GIFs`}
+                    </p>
+                  </div>
+                  <span className="text-secondary text-xs group-open:rotate-90 transition-transform">›</span>
+                </summary>
+                {(log.log_output || log.error) && (
+                  <div className="px-5 pb-4">
+                    <pre className="bg-black border border-border rounded-lg p-3 text-xs font-mono text-secondary overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">
+                      {log.error
+                        ? `ERROR: ${log.error}\n\n${log.log_output ?? ""}`
+                        : log.log_output}
+                    </pre>
+                  </div>
+                )}
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Users */}
       <div className="card overflow-hidden">

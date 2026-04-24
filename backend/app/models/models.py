@@ -159,3 +159,24 @@ class TemplateExercise(Base):
 
     template: Mapped[Template] = relationship("Template", back_populates="exercises")
     exercise: Mapped[Exercise] = relationship("Exercise")
+
+
+# ---------------------------------------------------------------------------
+# Seed Log — records each exercise seed attempt
+# ---------------------------------------------------------------------------
+class SeedLog(Base):
+    __tablename__ = "seed_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    mode: Mapped[str] = mapped_column(String(50))          # metadata_only | with_gifs | download_gifs
+    status: Mapped[str] = mapped_column(String(20))        # running | success | error
+    added: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    gifs_downloaded: Mapped[int] = mapped_column(Integer, default=0)
+    log_output: Mapped[Optional[str]] = mapped_column(Text) # newline-separated log lines
+    error: Mapped[Optional[str]] = mapped_column(Text)
+
+    user: Mapped[User] = relationship("User")

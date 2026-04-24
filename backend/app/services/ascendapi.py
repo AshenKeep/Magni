@@ -11,6 +11,7 @@ Supports three media storage modes:
 """
 import logging
 import json
+import os
 import httpx
 from pathlib import Path
 from typing import Optional
@@ -52,12 +53,13 @@ def _map_equipment(equipment: str) -> str:
 
 
 def _get_headers() -> dict:
-    settings = get_settings()
-    if not settings.ascendapi_key:
-        raise ValueError("ASCENDAPI_KEY is not configured in .env")
+    # Read directly from os.environ to bypass lru_cache on get_settings()
+    key = os.environ.get("ASCENDAPI_KEY", "").strip()
+    if not key:
+        raise ValueError("ASCENDAPI_KEY is not set in the container environment")
     return {
         "x-rapidapi-host": RAPIDAPI_HOST,
-        "x-rapidapi-key": settings.ascendapi_key,
+        "x-rapidapi-key": key,
         "Content-Type": "application/json",
     }
 

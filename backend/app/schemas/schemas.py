@@ -320,3 +320,19 @@ class PasswordResetRequest(BaseModel):
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
         return v
+
+
+# --- Seed logs ---
+
+class SeedLogResponse(BaseModel):
+    id: UUID
+    started_at: datetime
+    finished_at: Optional[datetime]
+    mode: str
+    status: str
+    added: int
+    skipped: int
+    gifs_downloaded: int
+    log_output: Optional[str]
+    error: Optional[str]
+    model_config = {"from_attributes": True}
