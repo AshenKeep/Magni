@@ -4,7 +4,13 @@ version: "3.9"
 # Single backend container serves the API, React dashboard, and runs scheduled backups.
 # Reverse proxy points everything at port 8000.
 # Postgres and Redis volumes MUST be local — do not mount over CIFS.
-# Backup and media volumes support CIFS NAS mounting.
+#
+# CIFS volumes (backup_data, media_data) read from .env:
+#   CIFS_PATH, CIFS_USERNAME, CIFS_PASSWORD       — backup NAS share
+#   MEDIA_CIFS_PATH, MEDIA_CIFS_USERNAME, MEDIA_CIFS_PASSWORD — media NAS share
+#
+# If you don't want CIFS for media, set MEDIA_CIFS_PATH= (empty) and
+# media_data will be a plain local volume.
 
 services:
   db:
@@ -66,8 +72,6 @@ services:
       MEDIA_STORAGE: ${MEDIA_STORAGE:-external}
       MEDIA_DIR: /media/exercises
       MEDIA_CIFS_PATH: ${MEDIA_CIFS_PATH:-}
-      MEDIA_CIFS_USERNAME: ${MEDIA_CIFS_USERNAME:-}
-      MEDIA_CIFS_PASSWORD: ${MEDIA_CIFS_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy
@@ -92,7 +96,8 @@ volumes:
   postgres_data:
   redis_data:
 
-  # Backup volume — CIFS NAS share (set CIFS_* vars in .env)
+  # Backup volume — CIFS NAS share
+  # Set CIFS_PATH, CIFS_USERNAME, CIFS_PASSWORD in .env
   backup_data:
     driver: local
     driver_opts:
@@ -101,15 +106,20 @@ volumes:
       o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
 
   # Media volume — exercise GIFs
-  # Default: local Docker volume (no extra config needed)
-  # For CIFS: replace this entire block with the commented example below
+  # MEDIA_STORAGE=external or local: leave as plain local volume below (no changes needed)
+  # MEDIA_STORAGE=cifs: set MEDIA_CIFS_PATH, MEDIA_CIFS_USERNAME, MEDIA_CIFS_PASSWORD in .env
+  #                     and uncomment the cifs block below, commenting out the plain block
+  #
+  # --- Plain local volume (default) ---
   media_data:
+  #
+  # --- CIFS NAS volume (uncomment and fill in, or just set vars in .env and use this block) ---
   # media_data:
   #   driver: local
   #   driver_opts:
   #     type: cifs
-  #     device: "//YOUR_NAS_IP/media"
-  #     o: "username=YOUR_USER,password=YOUR_PASS,uid=1000,gid=1000"
+  #     device: "${MEDIA_CIFS_PATH}"
+  #     o: "username=${MEDIA_CIFS_USERNAME},password=${MEDIA_CIFS_PASSWORD},uid=1000,gid=1000"
 
 networks:
   magni_internal:

@@ -129,6 +129,7 @@ services:
       ASCENDAPI_KEY: ${ASCENDAPI_KEY:-}
       MEDIA_STORAGE: ${MEDIA_STORAGE:-external}
       MEDIA_DIR: /media/exercises
+      MEDIA_CIFS_PATH: ${MEDIA_CIFS_PATH:-}
     depends_on:
       db:
         condition: service_healthy
@@ -149,14 +150,9 @@ volumes:
       type: cifs
       device: "${CIFS_PATH}"
       o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
+  # Plain local volume for media (default)
+  # To use CIFS: replace with the cifs block shown in the Media Storage section
   media_data:
-  # For CIFS NAS storage, replace media_data with:
-  # media_data:
-  #   driver: local
-  #   driver_opts:
-  #     type: cifs
-  #     device: "//YOUR_NAS_IP/media"
-  #     o: "username=YOUR_USER,password=YOUR_PASS,uid=1000,gid=1000"
 
 networks:
   magni_internal:
@@ -171,6 +167,8 @@ networks:
 |---|---|
 | `APP_URL` | Full public URL — must be `https://` |
 | `ALLOWED_ORIGINS` | CORS origins — usually same as `APP_URL` |
+| `POSTGRES_DB` | PostgreSQL database name (default `magni`) |
+| `POSTGRES_USER` | PostgreSQL username (default `magni`) |
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `REDIS_PASSWORD` | Redis password |
 | `SECRET_KEY` | JWT signing key — `python3 -c "import secrets; print(secrets.token_hex(32))"` |
@@ -178,7 +176,6 @@ networks:
 | `BACKEND_PORT` | Port exposed to host (default `8000`) |
 | `TZ` | Timezone e.g. `Australia/Perth` |
 | `BACKUP_SCHEDULE` | Cron schedule (default `0 2 * * *` — 2am daily) |
-| `BACKUP_DIR` | Backup path in container (default `/backups`) |
 | `CIFS_PATH` | NAS backup share e.g. `//192.168.1.x/backups` |
 | `CIFS_USERNAME` | NAS username |
 | `CIFS_PASSWORD` | NAS password |
@@ -220,19 +217,26 @@ Magni integrates with [AscendAPI](https://ascendapi.com) to seed your exercise l
 
 Set `MEDIA_STORAGE` in `.env`:
 
-- `external` — GIFs served from AscendAPI CDN (default, no storage needed)
-- `local` — GIFs downloaded to a local Docker volume (default `media_data` volume)
+- `external` — GIFs load from AscendAPI CDN (default, no storage needed)
+- `local` — GIFs downloaded to a plain local Docker volume (no extra config needed)
 - `cifs` — GIFs downloaded to a CIFS NAS share
 
-For CIFS media storage, edit `docker-compose.yml` and replace the `media_data:` volume block with:
+For `cifs`, set these in `.env`:
+```
+MEDIA_STORAGE=cifs
+MEDIA_CIFS_PATH=//YOUR_NAS_IP/media
+MEDIA_CIFS_USERNAME=your_username
+MEDIA_CIFS_PASSWORD=your_password
+```
 
+Then in `docker-compose.yml`, replace the `media_data:` volume block with:
 ```yaml
 media_data:
   driver: local
   driver_opts:
     type: cifs
-    device: "//YOUR_NAS_IP/media"
-    o: "username=YOUR_USER,password=YOUR_PASS,uid=1000,gid=1000"
+    device: "${MEDIA_CIFS_PATH}"
+    o: "username=${MEDIA_CIFS_USERNAME},password=${MEDIA_CIFS_PASSWORD},uid=1000,gid=1000"
 ```
 
 ---
