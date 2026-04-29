@@ -26,7 +26,7 @@ from app.api.routes.other import (
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path("/app/static")
 INDEX = STATIC_DIR / "index.html"
-MEDIA_DIR = Path("/media/exercises")
+MEDIA_DIR = Path("/media")
 
 
 @asynccontextmanager
@@ -106,4 +106,4 @@ if STATIC_DIR.exists():
 
 # Serve locally stored exercise GIFs
 if MEDIA_DIR.exists():
-    app.mount("/media/exercises", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+    app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
