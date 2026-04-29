@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
+import mimetypes
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,6 +23,9 @@ from app.api.routes.other import (
     sync_router,
     dashboard_router,
 )
+
+# Ensure .gif files are served with correct content-type
+mimetypes.add_type("image/gif", ".gif")
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path("/app/static")
