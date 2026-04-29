@@ -148,21 +148,6 @@ async def save_key(
     key = payload.api_key.strip()
     if not key:
         raise HTTPException(status_code=400, detail="API key cannot be empty")
-
-    # Validate key format per provider — these are easy to mix up
-    if payload.provider == "workoutx" and not key.startswith("wx_"):
-        raise HTTPException(
-            status_code=400,
-            detail="WorkoutX keys must start with 'wx_'. You may have pasted an AscendAPI/RapidAPI key. "
-                   "Sign up at https://workoutxapp.com/dashboard.html to get a WorkoutX key.",
-        )
-    if payload.provider == "ascendapi" and key.startswith("wx_"):
-        raise HTTPException(
-            status_code=400,
-            detail="That looks like a WorkoutX key (starts with 'wx_'), not an AscendAPI key. "
-                   "AscendAPI keys come from RapidAPI — see signup instructions.",
-        )
-
     record = await set_api_key(db, payload.provider, key)
     return {"status": "saved", "provider": record.provider, "preview": mask_key(record.api_key)}
 
@@ -346,9 +331,22 @@ async def seed_exercises(
                 continue
 
             gif_url = normalized.get("gif_url")
-            if gif_url and download_gifs and settings.media_storage != "external":
+            # WorkoutX GIFs MUST be cached locally — their CDN is auth-protected,
+            # browsers can't load the URLs directly. So we force-download even in
+            # "external" mode for WorkoutX exercises only.
+            should_download = (
+                gif_url and (
+                    download_gifs or prov == "workoutx"
+                ) and (
+                    settings.media_storage != "external" or prov == "workoutx"
+                )
+            )
+            if should_download:
                 log(f"Downloading GIF: {name}")
-                local_url = await module.download_gif(gif_url, ext_id or "unknown")
+                if prov == "workoutx":
+                    local_url = await module.download_gif(gif_url, ext_id or "unknown", api_key=api_key)
+                else:
+                    local_url = await module.download_gif(gif_url, ext_id or "unknown")
                 normalized["gif_url"] = local_url
                 if local_url and local_url.startswith("/media"):
                     total_gifs += 1
@@ -436,12 +434,15 @@ async def download_gifs_for_existing(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Downloads/caches GIFs for previously seeded exercises.
+    WorkoutX GIFs are always cached (their endpoint is auth-protected so the
+    browser can't display them directly).
+    AscendAPI GIFs only cache when MEDIA_STORAGE is local or cifs.
+    """
     settings = get_settings()
-    if settings.media_storage == "external":
-        raise HTTPException(
-            status_code=400,
-            detail="MEDIA_STORAGE is set to 'external'. Change to 'local' or 'cifs' in .env first.",
-        )
+    media_dir_path = Path(settings.media_dir)
+    media_dir_path.mkdir(parents=True, exist_ok=True)
 
     result = await db.execute(
         select(Exercise).where(
@@ -469,6 +470,9 @@ async def download_gifs_for_existing(
     skipped = 0
     failed = 0
 
+    # Cache the WorkoutX key once (used for all WorkoutX GIF downloads)
+    workoutx_key = await get_api_key(db, "workoutx")
+
     for ex in exercises:
         if ex.gif_url and ex.gif_url.startswith("/media"):
             skipped += 1
@@ -480,7 +484,7 @@ async def download_gifs_for_existing(
         log(f"Downloading: {ex.name}")
         # Use the appropriate provider's download function
         if ex.source == "workoutx" and ex.workoutx_id:
-            local_url = await workoutx.download_gif(ex.gif_url, ex.workoutx_id)
+            local_url = await workoutx.download_gif(ex.gif_url, ex.workoutx_id, api_key=workoutx_key)
         else:
             local_url = await ascendapi.download_gif(ex.gif_url, ex.ascendapi_id or ex.workoutx_id or "unknown")
 

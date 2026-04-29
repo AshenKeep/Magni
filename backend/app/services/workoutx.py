@@ -133,10 +133,24 @@ async def fetch_all_exercises(api_key: str, limit_per_part: int = 10) -> list[di
     return all_exercises
 
 
-async def download_gif(gif_url: str, exercise_id: str) -> Optional[str]:
-    media_dir = get_media_dir()
-    if media_dir is None:
-        return gif_url
+async def download_gif(gif_url: str, exercise_id: str, api_key: str | None = None) -> Optional[str]:
+    """
+    WorkoutX GIF endpoints (api.workoutxapp.com/v1/gifs/{id}) are auth-protected.
+    Must pass X-WorkoutX-Key header when downloading.
+
+    Always caches locally — WorkoutX GIFs cannot be served externally because
+    the URL is auth-protected and browsers don't have the API key.
+    """
+    # Force local caching for WorkoutX even in 'external' mode — see above
+    settings = get_settings()
+    if settings.media_storage == "external":
+        # Use a local cache directory anyway — WorkoutX GIFs MUST be cached
+        media_dir = Path(settings.media_dir)
+        media_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        media_dir = get_media_dir()
+        if media_dir is None:
+            return gif_url
 
     filename = f"wx_{exercise_id}.gif"
     dest = media_dir / filename
@@ -146,13 +160,19 @@ async def download_gif(gif_url: str, exercise_id: str) -> Optional[str]:
         return local_url
 
     try:
+        # Add auth header for WorkoutX-hosted GIFs
+        headers = {}
+        if api_key and "workoutxapp.com" in gif_url:
+            headers["X-WorkoutX-Key"] = api_key
+
         async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.get(gif_url, follow_redirects=True)
+            resp = await client.get(gif_url, follow_redirects=True, headers=headers)
             resp.raise_for_status()
             dest.write_bytes(resp.content)
         return local_url
     except Exception as e:
         logger.warning("WorkoutX: GIF download failed for %s: %s", gif_url, e)
+        return gif_url  # fall back to original URL (won't work but won't crash)
         return gif_url
 
 
