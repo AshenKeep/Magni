@@ -1,56 +1,32 @@
 import os
+import json
 from pathlib import Path
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.session import get_db
-from app.models.models import User, Exercise, SeedLog
+from app.models.models import User, Exercise, SeedLog, ApiKey
 from app.schemas.schemas import (
     BackupStatus, AdminUserResponse, PasswordResetRequest, SeedLogResponse,
 )
 from app.core.security import get_current_user_id, hash_password
 from app.core.config import get_settings
 from app.services.backup import run_backup
-from app.services.ascendapi import (
-    fetch_all_exercises, normalize_exercise,
-    download_gif, get_media_dir, estimate_requests, BODY_PARTS,
+from app.services import ascendapi, workoutx
+from app.services.api_keys import (
+    get_api_key, set_api_key, delete_api_key, list_api_keys, mask_key,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-def _get_ascendapi_key() -> str:
-    """
-    Read ASCENDAPI_KEY directly from environment every time — bypasses
-    the lru_cache on get_settings() so a key added after first startup works.
-    """
-    return os.environ.get("ASCENDAPI_KEY", "").strip()
-
-
 # ---------------------------------------------------------------------------
 # Backup
 # ---------------------------------------------------------------------------
-
-@router.get("/debug/env")
-async def debug_env(_: str = Depends(get_current_user_id)):
-    """
-    Shows what env vars the container can actually see.
-    Use this to diagnose key configuration issues.
-    """
-    key = os.environ.get("ASCENDAPI_KEY", "")
-    all_keys = [k for k in os.environ.keys() if "ASCEND" in k or "RAPID" in k or "API" in k]
-    return {
-        "ascendapi_key_set": bool(key),
-        "ascendapi_key_length": len(key),
-        "ascendapi_key_preview": f"{key[:8]}…{key[-4:]}" if len(key) > 12 else ("(empty)" if not key else key),
-        "related_env_vars": all_keys,
-        "media_storage": os.environ.get("MEDIA_STORAGE", "(not set)"),
-        "environment": os.environ.get("ENVIRONMENT", "(not set)"),
-    }
-
 
 @router.get("/backup/status", response_model=BackupStatus)
 async def backup_status(_: str = Depends(get_current_user_id)):
@@ -80,10 +56,7 @@ async def trigger_backup(_: str = Depends(get_current_user_id)):
 # ---------------------------------------------------------------------------
 
 @router.get("/users", response_model=list[AdminUserResponse])
-async def list_users(
-    _: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-):
+async def list_users(_: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.created_at))
     return result.scalars().all()
 
@@ -121,6 +94,76 @@ async def toggle_active(
 
 
 # ---------------------------------------------------------------------------
+# API Keys (database-backed)
+# ---------------------------------------------------------------------------
+
+class ApiKeySetPayload(BaseModel):
+    provider: str  # "ascendapi" | "workoutx"
+    api_key: str
+
+
+@router.get("/api-keys")
+async def list_keys(
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns all configured API keys with masked previews (never the full key)."""
+    keys = await list_api_keys(db)
+    by_provider = {k.provider: k for k in keys}
+
+    return {
+        "providers": [
+            {
+                "provider": "ascendapi",
+                "name": "AscendAPI",
+                "configured": "ascendapi" in by_provider,
+                "enabled": by_provider["ascendapi"].enabled if "ascendapi" in by_provider else False,
+                "preview": mask_key(by_provider["ascendapi"].api_key) if "ascendapi" in by_provider else "(not set)",
+                "free_quota": ascendapi.FREE_QUOTA,
+                "docs_url": "https://rapidapi.com/user/ascendapi",
+                "signup_instructions": "Sign up at rapidapi.com → Search 'EDB with Videos and Images by AscendAPI' → Subscribe (Basic, free) → Copy your X-RapidAPI-Key",
+            },
+            {
+                "provider": "workoutx",
+                "name": "WorkoutX",
+                "configured": "workoutx" in by_provider,
+                "enabled": by_provider["workoutx"].enabled if "workoutx" in by_provider else False,
+                "preview": mask_key(by_provider["workoutx"].api_key) if "workoutx" in by_provider else "(not set)",
+                "free_quota": workoutx.FREE_QUOTA,
+                "docs_url": "https://workoutxapp.com/docs.html",
+                "signup_instructions": "Sign up at workoutxapp.com → Get API Key (free, no card) → Copy the wx_… key",
+            },
+        ]
+    }
+
+
+@router.post("/api-keys")
+async def save_key(
+    payload: ApiKeySetPayload,
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.provider not in ("ascendapi", "workoutx"):
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {payload.provider}")
+    if not payload.api_key.strip():
+        raise HTTPException(status_code=400, detail="API key cannot be empty")
+    record = await set_api_key(db, payload.provider, payload.api_key.strip())
+    return {"status": "saved", "provider": record.provider, "preview": mask_key(record.api_key)}
+
+
+@router.delete("/api-keys/{provider}")
+async def remove_key(
+    provider: str,
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    deleted = await delete_api_key(db, provider)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"No key configured for {provider}")
+    return {"status": "deleted", "provider": provider}
+
+
+# ---------------------------------------------------------------------------
 # Seed logs
 # ---------------------------------------------------------------------------
 
@@ -129,163 +172,189 @@ async def get_seed_logs(
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Returns the last 10 seed attempts for the current user."""
     result = await db.execute(
-        select(SeedLog)
-        .where(SeedLog.user_id == user_id)
-        .order_by(SeedLog.started_at.desc())
-        .limit(10)
+        select(SeedLog).where(SeedLog.user_id == user_id).order_by(SeedLog.started_at.desc()).limit(10)
     )
     return result.scalars().all()
 
 
 # ---------------------------------------------------------------------------
-# Exercise seeding — AscendAPI
+# Exercise seeding
 # ---------------------------------------------------------------------------
 
-@router.get("/exercises/seed/estimate")
-async def seed_estimate(
-    download_gifs: bool = False,
-    _: str = Depends(get_current_user_id),
-):
-    estimated_exercises = len(BODY_PARTS) * 25
-    return estimate_requests(estimated_exercises, download_gifs)
-
-
 @router.get("/exercises/media/status")
-async def media_status(_: str = Depends(get_current_user_id)):
+async def media_status(
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
     settings = get_settings()
-    media_dir = get_media_dir()
+    media_dir = ascendapi.get_media_dir()
     gif_count = len(list(media_dir.glob("*.gif"))) if media_dir and media_dir.exists() else 0
-    key = _get_ascendapi_key()
+
+    ascendapi_key = await get_api_key(db, "ascendapi")
+    workoutx_key = await get_api_key(db, "workoutx")
+
     return {
         "media_storage": settings.media_storage,
         "media_dir": settings.media_dir,
         "gif_count": gif_count,
         "cifs_configured": bool(settings.media_cifs_path),
-        "api_key_configured": bool(key),
-        "api_key_preview": f"{key[:6]}…" if len(key) > 6 else ("(not set)" if not key else key),
+        "providers": {
+            "ascendapi": {"configured": bool(ascendapi_key)},
+            "workoutx": {"configured": bool(workoutx_key)},
+        },
     }
+
+
+@router.get("/exercises/seed/estimate")
+async def seed_estimate(
+    provider: str = "ascendapi",
+    download_gifs: bool = False,
+    _: str = Depends(get_current_user_id),
+):
+    if provider == "ascendapi":
+        estimated = len(ascendapi.BODY_PARTS) * 25
+        return ascendapi.estimate_requests(estimated, download_gifs)
+    elif provider == "workoutx":
+        estimated = len(workoutx.BODY_PARTS) * 10
+        return workoutx.estimate_requests(estimated, download_gifs)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
 
 @router.post("/exercises/seed")
 async def seed_exercises(
+    provider: str = "ascendapi",
     download_gifs: bool = False,
     user_id: str = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Seeds exercise library from AscendAPI with full logging.
-    download_gifs=False  → metadata + CDN links (~9 API requests)
-    download_gifs=True   → metadata + local GIF downloads
+    Seeds exercise library from selected provider.
+    provider: "ascendapi" | "workoutx" | "both"
     """
-    key = _get_ascendapi_key()
-    settings = get_settings()
+    if provider not in ("ascendapi", "workoutx", "both"):
+        raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
+    settings = get_settings()
     log_lines: list[str] = []
 
     def log(msg: str) -> None:
         ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        line = f"[{ts}] {msg}"
-        log_lines.append(line)
+        log_lines.append(f"[{ts}] {msg}")
 
-    # Create seed log entry
     seed_log = SeedLog(
         user_id=user_id,
-        mode="with_gifs" if download_gifs else "metadata_only",
+        mode=f"{provider}_{'with_gifs' if download_gifs else 'metadata'}",
         status="running",
         added=0, skipped=0, gifs_downloaded=0,
     )
     db.add(seed_log)
     await db.flush()
 
-    log(f"Seed started — mode: {'with_gifs' if download_gifs else 'metadata_only'}")
+    log(f"Seed started — provider: {provider}, gifs: {download_gifs}")
     log(f"Media storage: {settings.media_storage}")
-    log(f"API key configured: {bool(key)} — preview: {key[:6] + '…' if len(key) > 6 else '(not set)'}")
 
-    # Key check
-    if not key:
-        error_msg = "ASCENDAPI_KEY is not set in the container environment. Add it to .env and run: docker compose up -d"
-        log(f"ERROR: {error_msg}")
-        seed_log.status = "error"
-        seed_log.error = error_msg
-        seed_log.log_output = "\n".join(log_lines)
-        seed_log.finished_at = datetime.now(timezone.utc)
-        await db.flush()
-        raise HTTPException(status_code=400, detail=error_msg)
+    providers_to_run: list[str] = ["ascendapi", "workoutx"] if provider == "both" else [provider]
 
-    # Temporarily override the key in env for the fetch call
-    os.environ["ASCENDAPI_KEY"] = key
+    total_added = 0
+    total_skipped = 0
+    total_gifs = 0
+    total_fetched = 0
 
-    try:
-        log(f"Fetching exercises from AscendAPI across {len(BODY_PARTS)} body parts…")
-        raw_exercises = await fetch_all_exercises(limit_per_part=25)
-        log(f"Fetched {len(raw_exercises)} unique exercises total")
-    except Exception as e:
-        error_msg = f"AscendAPI fetch failed: {str(e)}"
-        log(f"ERROR: {error_msg}")
-        seed_log.status = "error"
-        seed_log.error = error_msg
-        seed_log.log_output = "\n".join(log_lines)
-        seed_log.finished_at = datetime.now(timezone.utc)
-        await db.flush()
-        raise HTTPException(status_code=502, detail=error_msg)
+    for prov in providers_to_run:
+        api_key = await get_api_key(db, prov)
+        if not api_key:
+            error_msg = f"{prov} API key is not configured. Add it via Admin → API Keys."
+            log(f"ERROR: {error_msg}")
+            if provider == "both":
+                continue  # skip this provider but try the other
+            seed_log.status = "error"
+            seed_log.error = error_msg
+            seed_log.log_output = "\n".join(log_lines)
+            seed_log.finished_at = datetime.now(timezone.utc)
+            await db.flush()
+            raise HTTPException(status_code=400, detail=error_msg)
 
-    added = 0
-    skipped = 0
-    gifs_downloaded = 0
+        log(f"--- {prov} ---")
+        log(f"Fetching exercises from {prov}…")
 
-    for raw in raw_exercises:
-        normalized = normalize_exercise(raw)
-        ascendapi_id = normalized.get("ascendapi_id")
-        name = normalized.get("name", "unknown")
+        try:
+            module = ascendapi if prov == "ascendapi" else workoutx
+            limit = 25 if prov == "ascendapi" else 10
+            raw_exercises = await module.fetch_all_exercises(api_key, limit_per_part=limit)
+            log(f"Fetched {len(raw_exercises)} exercises from {prov}")
+            total_fetched += len(raw_exercises)
+        except Exception as e:
+            error_msg = f"{prov} fetch failed: {str(e)}"
+            log(f"ERROR: {error_msg}")
+            if provider == "both":
+                continue
+            seed_log.status = "error"
+            seed_log.error = error_msg
+            seed_log.log_output = "\n".join(log_lines)
+            seed_log.finished_at = datetime.now(timezone.utc)
+            await db.flush()
+            raise HTTPException(status_code=502, detail=error_msg)
 
-        if ascendapi_id:
-            existing = await db.execute(
+        for raw in raw_exercises:
+            normalized = module.normalize_exercise(raw)
+            ext_id_field = "ascendapi_id" if prov == "ascendapi" else "workoutx_id"
+            ext_id = normalized.get(ext_id_field)
+            name = normalized.get("name", "unknown")
+
+            # Dedupe by external id
+            if ext_id:
+                col = Exercise.ascendapi_id if prov == "ascendapi" else Exercise.workoutx_id
+                existing = await db.execute(
+                    select(Exercise).where(Exercise.user_id == user_id, col == ext_id)
+                )
+                if existing.scalar_one_or_none():
+                    total_skipped += 1
+                    continue
+
+            # Also dedupe by name (in case "both" mode pulls same exercise from each)
+            existing_by_name = await db.execute(
                 select(Exercise).where(
                     Exercise.user_id == user_id,
-                    Exercise.ascendapi_id == ascendapi_id,
+                    Exercise.name == name,
                 )
             )
-            if existing.scalar_one_or_none():
-                skipped += 1
+            if existing_by_name.scalar_one_or_none():
+                total_skipped += 1
                 continue
 
-        gif_url = normalized.get("gif_url")
-        if gif_url and download_gifs and settings.media_storage != "external":
-            log(f"Downloading GIF for: {name}")
-            local_url = await download_gif(gif_url, ascendapi_id or "unknown")
-            normalized["gif_url"] = local_url
-            if local_url and local_url.startswith("/media"):
-                gifs_downloaded += 1
-                log(f"  ✓ Saved: {local_url}")
-            else:
-                log(f"  ⚠ GIF download failed, using CDN URL")
+            gif_url = normalized.get("gif_url")
+            if gif_url and download_gifs and settings.media_storage != "external":
+                log(f"Downloading GIF: {name}")
+                local_url = await module.download_gif(gif_url, ext_id or "unknown")
+                normalized["gif_url"] = local_url
+                if local_url and local_url.startswith("/media"):
+                    total_gifs += 1
 
-        exercise = Exercise(user_id=user_id, **normalized)
-        db.add(exercise)
-        added += 1
+            exercise = Exercise(user_id=user_id, **normalized)
+            db.add(exercise)
+            total_added += 1
 
     await db.flush()
-
-    log(f"Seed complete — added: {added}, skipped: {skipped}, GIFs downloaded: {gifs_downloaded}")
+    log(f"Seed complete — added: {total_added}, skipped: {total_skipped}, GIFs: {total_gifs}")
 
     seed_log.status = "success"
-    seed_log.added = added
-    seed_log.skipped = skipped
-    seed_log.gifs_downloaded = gifs_downloaded
+    seed_log.added = total_added
+    seed_log.skipped = total_skipped
+    seed_log.gifs_downloaded = total_gifs
     seed_log.log_output = "\n".join(log_lines)
     seed_log.finished_at = datetime.now(timezone.utc)
     await db.flush()
 
     return {
         "status": "ok",
-        "added": added,
-        "skipped": skipped,
-        "total_fetched": len(raw_exercises),
-        "gifs_downloaded": gifs_downloaded,
+        "provider": provider,
+        "added": total_added,
+        "skipped": total_skipped,
+        "total_fetched": total_fetched,
+        "gifs_downloaded": total_gifs,
         "media_storage": settings.media_storage,
-        "log": log_lines,
     }
 
 
@@ -304,7 +373,7 @@ async def download_gifs_for_existing(
     result = await db.execute(
         select(Exercise).where(
             Exercise.user_id == user_id,
-            Exercise.ascendapi_id.isnot(None),
+            (Exercise.ascendapi_id.isnot(None)) | (Exercise.workoutx_id.isnot(None)),
         )
     )
     exercises = result.scalars().all()
@@ -316,9 +385,7 @@ async def download_gifs_for_existing(
         log_lines.append(f"[{ts}] {msg}")
 
     seed_log = SeedLog(
-        user_id=user_id,
-        mode="download_gifs",
-        status="running",
+        user_id=user_id, mode="download_gifs", status="running",
         added=0, skipped=0, gifs_downloaded=0,
     )
     db.add(seed_log)
@@ -338,17 +405,19 @@ async def download_gifs_for_existing(
             continue
 
         log(f"Downloading: {ex.name}")
-        local_url = await download_gif(ex.gif_url, ex.ascendapi_id)
+        # Use the appropriate provider's download function
+        if ex.source == "workoutx" and ex.workoutx_id:
+            local_url = await workoutx.download_gif(ex.gif_url, ex.workoutx_id)
+        else:
+            local_url = await ascendapi.download_gif(ex.gif_url, ex.ascendapi_id or ex.workoutx_id or "unknown")
+
         if local_url and local_url.startswith("/media"):
             ex.gif_url = local_url
             downloaded += 1
-            log(f"  ✓ {local_url}")
         else:
             failed += 1
-            log(f"  ✗ Failed")
 
     await db.flush()
-
     log(f"Done — downloaded: {downloaded}, already local: {skipped}, failed: {failed}")
 
     seed_log.status = "success"
@@ -363,5 +432,4 @@ async def download_gifs_for_existing(
         "skipped_already_local": skipped,
         "failed": failed,
         "total": len(exercises),
-        "log": log_lines,
     }

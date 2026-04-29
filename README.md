@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.5
+**Version:** v0.0.6
 
 A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 
@@ -8,10 +8,19 @@ A self-hosted fitness tracking system. Log workouts, build templates, sync Garmi
 
 ## Credits
 
-Exercise data powered by **[AscendAPI](https://ascendapi.com)** (formerly ExerciseDB) — structured, expert-validated exercise data with GIFs, videos, and instructions.
-- Website: [ascendapi.com](https://ascendapi.com)
+Magni integrates with two exercise data providers, both with free tiers:
+
+**[AscendAPI](https://ascendapi.com)** — formerly ExerciseDB. Structured, expert-validated exercise data with GIFs, videos, instructions.
+- Free tier: 2,000 requests/month
 - RapidAPI: [rapidapi.com/user/ascendapi](https://rapidapi.com/user/ascendapi)
 - GitHub: [github.com/ExerciseDB/exercisedb-api](https://github.com/ExerciseDB/exercisedb-api)
+
+**[WorkoutX](https://workoutxapp.com)** — 1,321 exercises with GIF animations, body part filters, target muscle data, equipment types, instructions.
+- Free tier: 500 requests/month, no card required
+- Docs: [workoutxapp.com/docs.html](https://workoutxapp.com/docs.html)
+- Direct API (not RapidAPI)
+
+You can use either, both, or neither — all keys are configured in the Admin UI.
 
 ---
 
@@ -33,21 +42,18 @@ Exercise data powered by **[AscendAPI](https://ascendapi.com)** (formerly Exerci
 
 - Linux server with Docker Engine 24+ and Docker Compose v2
 - A domain pointed at your server's public IP (or DDNS — [DuckDNS](https://www.duckdns.org) is free)
-- A reverse proxy handling TLS (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.)
-- Ports 80 and 443 open on your router/firewall
+- A reverse proxy handling TLS (Nginx Proxy Manager, Traefik, Cloudflare Tunnel, etc.) — optional for LAN-only use
+- Ports 80 and 443 open on your router/firewall (if using public access)
 
 ### Deploy
 
 ```bash
-# Clone the repo
 git clone https://github.com/AshenKeep/magni.git
 cd magni
 
-# Configure
 cp .env.example .env
 nano .env   # fill in all values
 
-# Pull images and start
 docker compose pull
 docker compose up -d
 ```
@@ -56,7 +62,9 @@ docker compose up -d
 
 On first launch, the app detects no users exist and redirects to a setup page where you create your account. The setup page is inaccessible once an account exists.
 
-### Deploying updates
+After signing in, go to **Admin → API Keys** to add your provider keys (optional — only needed if you want to seed exercises from external sources).
+
+### Updates
 
 ```bash
 cd magni
@@ -65,107 +73,15 @@ docker compose pull
 docker compose up -d
 ```
 
-### Reverse proxy
-
-Point your reverse proxy at `http://YOUR_SERVER_IP:8000` — both the frontend dashboard and all `/api/*` are served from a single container on a single port.
-
----
-
-## docker-compose.yml
-
-```yaml
-version: "3.9"
-
-services:
-  db:
-    image: postgres:16-alpine
-    container_name: magni_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-magni}
-      POSTGRES_USER: ${POSTGRES_USER:-magni}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-magni}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - magni_internal
-
-  redis:
-    image: redis:7-alpine
-    container_name: magni_redis
-    restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD}
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - magni_internal
-
-  backend:
-    image: ghcr.io/ashenkeep/magni-backend:latest
-    container_name: magni_backend
-    restart: unless-stopped
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-magni}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magni}
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      SECRET_KEY: ${SECRET_KEY}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
-      APP_URL: ${APP_URL}
-      ENVIRONMENT: ${ENVIRONMENT:-production}
-      TZ: ${TZ:-UTC}
-      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
-      BACKUP_DIR: /backups
-      ASCENDAPI_KEY: ${ASCENDAPI_KEY:-}
-      MEDIA_STORAGE: ${MEDIA_STORAGE:-external}
-      MEDIA_DIR: /media/exercises
-      MEDIA_CIFS_PATH: ${MEDIA_CIFS_PATH:-}
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - backup_data:/backups
-      - media_data:/media/exercises
-    networks:
-      - magni_internal
-
-volumes:
-  postgres_data:
-  redis_data:
-  backup_data:
-    driver: local
-    driver_opts:
-      type: cifs
-      device: "${CIFS_PATH}"
-      o: "username=${CIFS_USERNAME},password=${CIFS_PASSWORD},uid=1000,gid=1000"
-  # Plain local volume for media (default)
-  # To use CIFS: replace with the cifs block shown in the Media Storage section
-  media_data:
-
-networks:
-  magni_internal:
-    driver: bridge
-```
-
 ---
 
 ## Environment variables
 
+API keys for exercise providers (AscendAPI, WorkoutX) are **NOT** in `.env` — they're managed via the Admin UI and stored in the database. This avoids container restart hassles when changing keys.
+
 | Variable | Description |
 |---|---|
-| `APP_URL` | Full public URL — must be `https://` |
+| `APP_URL` | Full public URL — must be `https://` (or `http://` for LAN) |
 | `ALLOWED_ORIGINS` | CORS origins — usually same as `APP_URL` |
 | `POSTGRES_DB` | PostgreSQL database name (default `magni`) |
 | `POSTGRES_USER` | PostgreSQL username (default `magni`) |
@@ -179,7 +95,6 @@ networks:
 | `CIFS_PATH` | NAS backup share e.g. `//192.168.1.x/backups` |
 | `CIFS_USERNAME` | NAS username |
 | `CIFS_PASSWORD` | NAS password |
-| `ASCENDAPI_KEY` | RapidAPI key for AscendAPI exercise seeding |
 | `MEDIA_STORAGE` | `external` / `local` / `cifs` (default `external`) |
 | `MEDIA_CIFS_PATH` | NAS media share (when `MEDIA_STORAGE=cifs`) |
 | `MEDIA_CIFS_USERNAME` | NAS username for media |
@@ -187,70 +102,48 @@ networks:
 
 ---
 
-## Exercise library seeding (AscendAPI)
+## Exercise library seeding
 
-Magni integrates with [AscendAPI](https://ascendapi.com) to seed your exercise library with data, GIFs, and instructions.
-
-**Free plan: 2,000 requests/month, no credit card required.**
+Magni can pull exercise data from AscendAPI and/or WorkoutX. Both have free tiers.
 
 ### Setup
 
-1. Sign up at [rapidapi.com](https://rapidapi.com)
-2. Search for **"EDB with Videos and Images by AscendAPI"** → Subscribe (Basic, free)
-3. Copy your `X-RapidAPI-Key` → add to `.env` as `ASCENDAPI_KEY`
-4. Restart: `docker compose up -d`
-5. Go to **Admin → Exercise Library** and choose a seed mode
+1. Sign up for whichever provider(s) you want:
+   - **AscendAPI**: [rapidapi.com](https://rapidapi.com) → Search "EDB with Videos and Images by AscendAPI" → Subscribe (Basic, free)
+   - **WorkoutX**: [workoutxapp.com/dashboard.html](https://workoutxapp.com/dashboard.html#register) → Get API Key (free, no card)
+2. Go to **Admin → API Keys** in Magni
+3. Click "Add key" next to the provider, paste the key, save
+4. Go to **Admin → Exercise Library — Seed**, choose provider, click a seed button
 
 ### Seed modes
 
 | Mode | API requests | Result |
 |---|---|---|
-| **Seed metadata only** | ~9 | Exercise names, muscles, instructions. GIFs load from AscendAPI CDN |
-| **Seed + download GIFs** | ~9 + N | Full data + GIFs saved to your server (local or NAS) |
+| **Seed metadata only** | ~9–10 | Exercise names, muscles, instructions. GIFs load from CDN |
+| **Seed + download GIFs** | ~9 + N | Full data + GIFs cached on your server |
 | **Download GIFs for existing** | ~N | Cache GIFs for already-seeded exercises |
 
-**Tip for free plan users:** Seed metadata first (~9 requests), use the app for a while, then download GIFs (~225 requests) in a separate month to stay well within the 2,000/month quota.
+### Multi-category muscle tagging
 
-### Media storage options
+Exercises are tagged with **all** muscle categories they target — primary, secondary, supporting. So filtering by "Chest" shows compound movements like push-ups (Chest + Shoulders + Core), not just isolation lifts.
 
 ### Media storage options
 
 Set `MEDIA_STORAGE` in `.env`:
 
-- `external` — GIFs load from AscendAPI CDN (default, no storage needed)
-- `local` — GIFs downloaded to a plain local Docker volume (no extra config needed)
+- `external` — GIFs load from provider CDN (default, no storage needed)
+- `local` — GIFs downloaded to a local Docker volume
 - `cifs` — GIFs downloaded to a CIFS NAS share
 
-For `cifs`, set these in `.env`:
-```
-MEDIA_STORAGE=cifs
-MEDIA_CIFS_PATH=//YOUR_NAS_IP/media
-MEDIA_CIFS_USERNAME=your_username
-MEDIA_CIFS_PASSWORD=your_password
-```
-
-Then in `docker-compose.yml`, replace the `media_data:` volume block with:
-```yaml
-media_data:
-  driver: local
-  driver_opts:
-    type: cifs
-    device: "${MEDIA_CIFS_PATH}"
-    o: "username=${MEDIA_CIFS_USERNAME},password=${MEDIA_CIFS_PASSWORD},uid=1000,gid=1000"
-```
+For `cifs`, also set `MEDIA_CIFS_PATH/USERNAME/PASSWORD` in `.env` and uncomment the CIFS block in `docker-compose.yml`.
 
 ---
 
 ## Lost access — emergency recovery
 
 ```bash
-# Reset a user's password
 docker compose exec backend python -m app.cli reset-password --email you@example.com --password newpassword
-
-# Create a new user
 docker compose exec backend python -m app.cli create-user --email you@example.com --password newpassword --name "Your Name"
-
-# List all accounts
 docker compose exec backend python -m app.cli list-users
 ```
 
@@ -260,13 +153,9 @@ docker compose exec backend python -m app.cli list-users
 
 Backups run automatically per `BACKUP_SCHEDULE`. Files are written as `magni_backup_YYYYMMDD_HHMMSS.sql.gz`, kept for 30 days.
 
-**Trigger manually:**
-```bash
-curl -X POST http://localhost:8000/api/admin/backup/run \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
+Trigger manually from **Admin → Backup → Run now**.
 
-**Restore:**
+Restore:
 ```bash
 gunzip -c magni_backup_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db psql -U magni magni
 ```
@@ -315,12 +204,16 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 | `GET` | `/api/stats/daily` | Query daily stats |
 | `POST` | `/api/stats/hr` | Bulk insert HR readings |
 | `POST` | `/api/sync/` | Batch sync from Android |
+| `GET` | `/api/admin/api-keys` | List configured provider keys |
+| `POST` | `/api/admin/api-keys` | Save/update provider key |
+| `DELETE` | `/api/admin/api-keys/{provider}` | Remove provider key |
 | `GET` | `/api/admin/backup/status` | Backup status |
 | `POST` | `/api/admin/backup/run` | Manual backup |
 | `GET` | `/api/admin/exercises/seed/estimate` | Quota estimate |
-| `POST` | `/api/admin/exercises/seed` | Seed exercises |
+| `POST` | `/api/admin/exercises/seed` | Seed exercises (provider param) |
 | `POST` | `/api/admin/exercises/download-gifs` | Cache GIFs locally |
 | `GET` | `/api/admin/exercises/media/status` | Media storage status |
+| `GET` | `/api/admin/logs/seed` | Last 10 seed attempts |
 | `GET` | `/health` | Health check + version |
 
 ---

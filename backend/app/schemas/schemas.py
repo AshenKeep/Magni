@@ -57,26 +57,32 @@ class UserResponse(BaseModel):
 class ExerciseCreate(BaseModel):
     name: str
     muscle_group: Optional[str] = None
+    muscle_groups: Optional[str] = None       # JSON array — all categories
     secondary_muscles: Optional[str] = None
     equipment: Optional[str] = None
     notes: Optional[str] = None
     instructions: Optional[str] = None
     gif_url: Optional[str] = None
     video_url: Optional[str] = None
+    source: Optional[str] = None
     ascendapi_id: Optional[str] = None
+    workoutx_id: Optional[str] = None
 
 
 class ExerciseResponse(BaseModel):
     id: UUID
     name: str
     muscle_group: Optional[str]
+    muscle_groups: Optional[str]
     secondary_muscles: Optional[str]
     equipment: Optional[str]
     notes: Optional[str]
     instructions: Optional[str]
     gif_url: Optional[str]
     video_url: Optional[str]
+    source: Optional[str]
     ascendapi_id: Optional[str]
+    workoutx_id: Optional[str]
     created_at: datetime
     model_config = {"from_attributes": True}
 

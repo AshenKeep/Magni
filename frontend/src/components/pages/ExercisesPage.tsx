@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ExerciseResponse } from "@/lib/api";
+import { parseMuscleGroups, exerciseMatchesMuscle, MUSCLE_CATEGORIES } from "@/lib/muscleGroups";
 
-const MUSCLE_GROUPS = ["Chest","Back","Shoulders","Biceps","Triceps","Legs","Glutes","Core","Cardio","Full Body","Other"];
+const MUSCLE_GROUPS = MUSCLE_CATEGORIES;
 const EQUIPMENT = ["Barbell","Dumbbell","Machine","Cable","Bodyweight","Resistance Band","Kettlebell","Other"];
 
 // Exercise detail modal — shows GIF, instructions, muscles
@@ -38,18 +39,18 @@ function ExerciseDetailModal({ exercise, onClose, onEdit }: {
           )}
 
           <div className="p-5 space-y-4">
-            {/* Muscle info */}
+            {/* Muscle info — show all category tags */}
             <div className="flex flex-wrap gap-2">
-              {exercise.muscle_group && (
-                <span className="badge-blue">{exercise.muscle_group}</span>
-              )}
+              {parseMuscleGroups(exercise.muscle_groups, exercise.muscle_group).map((cat) => (
+                <span key={cat} className="badge-blue">{cat}</span>
+              ))}
               {exercise.equipment && (
                 <span className="badge-magenta">{exercise.equipment}</span>
               )}
               {exercise.secondary_muscles && (() => {
                 try {
                   const muscles = JSON.parse(exercise.secondary_muscles);
-                  return muscles.slice(0, 3).map((m: string) => (
+                  return muscles.slice(0, 5).map((m: string) => (
                     <span key={m} className="inline-flex items-center bg-muted text-secondary text-xs px-2 py-0.5 rounded-full capitalize">{m}</span>
                   ));
                 } catch { return null; }
@@ -170,11 +171,14 @@ export default function ExercisesPage() {
 
   const filtered = (exercises ?? []).filter(e =>
     (search === "" || e.name.toLowerCase().includes(search.toLowerCase())) &&
-    (filterGroup === "" || e.muscle_group === filterGroup)
+    exerciseMatchesMuscle(e, filterGroup || "all")
   );
 
+  // Group by primary muscle category, but exercises with multiple categories
+  // appear under the first matched category in the filter.
   const grouped = filtered.reduce((acc, ex) => {
-    const group = ex.muscle_group ?? "Other";
+    const cats = parseMuscleGroups(ex.muscle_groups, ex.muscle_group);
+    const group = filterGroup && cats.includes(filterGroup) ? filterGroup : (cats[0] ?? "Other");
     if (!acc[group]) acc[group] = [];
     acc[group].push(ex);
     return acc;
@@ -185,7 +189,7 @@ export default function ExercisesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Exercise Library</h1>
-          <p className="text-xs text-secondary mt-1">{(exercises ?? []).length} exercises · Seed more from Admin → AscendAPI</p>
+          <p className="text-xs text-secondary mt-1">{(exercises ?? []).length} exercises · Seed more from Admin → Exercise Library</p>
         </div>
         <button onClick={() => setFormModal("new")} className="btn-primary">+ New exercise</button>
       </div>
@@ -225,7 +229,15 @@ export default function ExercisesPage() {
                     <button onClick={() => setDetailModal(ex)} className="text-sm font-medium text-primary hover:text-blue transition-colors text-left">
                       {ex.name}
                     </button>
-                    <p className="text-xs text-secondary">{ex.equipment ?? "No equipment"}</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <p className="text-xs text-secondary">{ex.equipment ?? "No equipment"}</p>
+                      {parseMuscleGroups(ex.muscle_groups, ex.muscle_group)
+                        .filter(c => c !== group)
+                        .slice(0, 3)
+                        .map((cat) => (
+                          <span key={cat} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-secondary">{cat}</span>
+                        ))}
+                    </div>
                   </div>
 
                   <div className="flex gap-3 shrink-0">

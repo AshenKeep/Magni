@@ -5,6 +5,55 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.6] — 2026-04-29
+
+### Added
+
+#### Backend
+- **WorkoutX API integration** — second exercise data provider (1,321 exercises, free tier 500 req/month, no card required). New service module `services/workoutx.py`. Uses different auth (`X-WorkoutX-Key` header) and direct API (not RapidAPI).
+- **Multi-category muscle tagging** — exercises are now tagged with all muscle categories they target. New `muscle_groups` JSON column on Exercise. Compound movements like push-ups appear under Chest AND Shoulders AND Core.
+- **Database-backed API keys** — new `api_keys` table replaces env-var-based key storage. Keys managed via Admin UI, no container restart needed when changing them. Fixes the lru_cache bug from v0.0.5 permanently.
+- New shared `services/muscle_mapping.py` module — single source of truth for mapping body parts and muscle names to Magni's simplified categories. Used by both AscendAPI and WorkoutX providers.
+- New `services/api_keys.py` module — DB-backed key CRUD with `get_api_key`, `set_api_key`, `delete_api_key`, `list_api_keys`, `mask_key` helpers.
+- New endpoints:
+  - `GET /api/admin/api-keys` — list configured providers with masked previews
+  - `POST /api/admin/api-keys` — save/update a provider key
+  - `DELETE /api/admin/api-keys/{provider}` — remove a provider key
+- Updated endpoints:
+  - `POST /api/admin/exercises/seed?provider={ascendapi|workoutx|both}` — provider selection
+  - `GET /api/admin/exercises/seed/estimate?provider=…` — per-provider quota estimates
+  - `GET /api/admin/exercises/media/status` — now returns per-provider configured status
+- Exercise model gains `muscle_groups`, `source` ("ascendapi"/"workoutx"/"manual"), `workoutx_id` columns
+- Migration `0005_v006_changes.py` adds new columns + api_keys table, backfills existing exercises with single-element `muscle_groups` array
+
+#### Frontend
+- **API Keys panel in Admin** — per-provider cards with status indicator, masked key preview, Add/Replace/Remove buttons, collapsible setup instructions, free quota display
+- **Provider selector in seed panel** — Buttons for AscendAPI / WorkoutX / Both. Disabled when key not configured.
+- **Multi-category filter** — exercise filter dropdown now shows exercises that target the selected muscle as primary OR secondary
+- **Category tags in exercise list** — small chips next to exercise name showing additional muscle categories beyond the current group
+- **Detail modal shows all categories** — every muscle category an exercise targets shown as primary tag
+- New helper `lib/muscleGroups.ts` — `parseMuscleGroups`, `exerciseMatchesMuscle`, `MUSCLE_CATEGORIES`
+- `ExerciseResponse` type extended with `muscle_groups`, `source`, `workoutx_id`
+
+#### Docs
+- README rewritten — both provider credits, API keys section explains DB storage, environment variable table simplified (no `ASCENDAPI_KEY`)
+- AscendAPI and WorkoutX both credited prominently
+- Multi-category muscle tagging explained
+- API reference updated with new admin endpoints
+
+### Removed
+- **`ASCENDAPI_KEY` env var** — fully removed. Was previously used to configure the AscendAPI key. Now stored in the database via Admin UI. The previous env var fallback has been removed entirely.
+- `ascendapi_key` setting from `app/core/config.py`
+- `ASCENDAPI_KEY: ${ASCENDAPI_KEY:-}` line from `docker-compose.yml`
+- `ASCENDAPI_KEY=…` line from `.env.example`
+- `GET /api/admin/debug/env` endpoint (was a v0.0.5 debug helper, no longer needed)
+
+### Migration notes
+- Run `docker compose pull && docker compose up -d` to apply migration `0005`. Existing exercises get a single-item `muscle_groups` array preserving their current tag.
+- After upgrading, existing AscendAPI users need to re-add their key via **Admin → API Keys** (the env var is no longer read).
+
+---
+
 ## [0.0.5] — 2026-04-24
 
 ### Added

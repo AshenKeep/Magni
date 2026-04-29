@@ -38,13 +38,16 @@ class Exercise(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     muscle_group: Mapped[Optional[str]] = mapped_column(String(100))
-    secondary_muscles: Mapped[Optional[str]] = mapped_column(Text)  # JSON array stored as string
+    muscle_groups: Mapped[Optional[str]] = mapped_column(Text)       # JSON array — all categories this exercise targets
+    secondary_muscles: Mapped[Optional[str]] = mapped_column(Text)   # JSON array stored as string
     equipment: Mapped[Optional[str]] = mapped_column(String(100))
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    instructions: Mapped[Optional[str]] = mapped_column(Text)       # Step-by-step instructions
-    gif_url: Mapped[Optional[str]] = mapped_column(String(500))     # AscendAPI GIF/image URL
-    video_url: Mapped[Optional[str]] = mapped_column(String(500))   # AscendAPI video URL
+    instructions: Mapped[Optional[str]] = mapped_column(Text)        # Step-by-step instructions
+    gif_url: Mapped[Optional[str]] = mapped_column(String(500))      # External or local GIF URL
+    video_url: Mapped[Optional[str]] = mapped_column(String(500))    # Video URL if available
+    source: Mapped[Optional[str]] = mapped_column(String(50))        # "ascendapi" | "workoutx" | "manual"
     ascendapi_id: Mapped[Optional[str]] = mapped_column(String(100)) # External ID for deduplication
+    workoutx_id: Mapped[Optional[str]] = mapped_column(String(100))  # WorkoutX exercise ID
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped[User] = relationship("User", back_populates="exercises")
@@ -180,3 +183,17 @@ class SeedLog(Base):
     error: Mapped[Optional[str]] = mapped_column(Text)
 
     user: Mapped[User] = relationship("User")
+
+
+# ---------------------------------------------------------------------------
+# API Keys — for external exercise providers
+# ---------------------------------------------------------------------------
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    provider: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)  # "ascendapi" | "workoutx"
+    api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

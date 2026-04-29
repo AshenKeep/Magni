@@ -72,8 +72,8 @@ export const api = {
 
   exercises: {
     list:   () => request<ExerciseResponse[]>("/api/exercises/"),
-    create: (body: { name: string; muscle_group?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string; ascendapi_id?: string }) => request<ExerciseResponse>("/api/exercises/", { method: "POST", body: JSON.stringify(body) }),
-    update: (id: string, body: { name?: string; muscle_group?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string }) => request<ExerciseResponse>(`/api/exercises/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    create: (body: { name: string; muscle_group?: string; muscle_groups?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string; ascendapi_id?: string; workoutx_id?: string; source?: string }) => request<ExerciseResponse>("/api/exercises/", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: { name?: string; muscle_group?: string; muscle_groups?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string }) => request<ExerciseResponse>(`/api/exercises/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     delete: (id: string) => request<void>(`/api/exercises/${id}`, { method: "DELETE" }),
   },
 
@@ -105,12 +105,14 @@ export const api = {
     listUsers:       () => request<AdminUser[]>("/api/admin/users"),
     resetPassword:   (email: string, new_password: string) => request<{ status: string }>("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ email, new_password }) }),
     toggleActive:    (userId: string) => request<{ email: string; is_active: boolean }>(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }),
-    seedEstimate:    (downloadGifs: boolean) => request<SeedEstimate>(`/api/admin/exercises/seed/estimate?download_gifs=${downloadGifs}`),
-    seedExercises:   (downloadGifs: boolean) => request<SeedResult>(`/api/admin/exercises/seed?download_gifs=${downloadGifs}`, { method: "POST" }),
+    apiKeysList:     () => request<ApiKeysList>("/api/admin/api-keys"),
+    apiKeySave:      (provider: string, api_key: string) => request<{ status: string; provider: string; preview: string }>("/api/admin/api-keys", { method: "POST", body: JSON.stringify({ provider, api_key }) }),
+    apiKeyDelete:    (provider: string) => request<{ status: string; provider: string }>(`/api/admin/api-keys/${provider}`, { method: "DELETE" }),
+    seedEstimate:    (provider: string, downloadGifs: boolean) => request<SeedEstimate>(`/api/admin/exercises/seed/estimate?provider=${provider}&download_gifs=${downloadGifs}`),
+    seedExercises:   (provider: string, downloadGifs: boolean) => request<SeedResult>(`/api/admin/exercises/seed?provider=${provider}&download_gifs=${downloadGifs}`, { method: "POST" }),
     downloadGifs:    () => request<GifDownloadResult>("/api/admin/exercises/download-gifs", { method: "POST" }),
     mediaStatus:     () => request<MediaStatus>("/api/admin/exercises/media/status"),
     seedLogs:        () => request<SeedLogEntry[]>("/api/admin/logs/seed"),
-    debugEnv:        () => request<Record<string, unknown>>("/api/admin/debug/env"),
   },
 };
 
@@ -148,7 +150,21 @@ export interface WorkoutSetCreate {
   exercise_id: string; set_number: number; reps?: number; weight_kg?: number; rpe?: number; notes?: string; client_id?: string;
 }
 
-export interface ExerciseResponse { id: string; name: string; muscle_group: string | null; secondary_muscles: string | null; equipment: string | null; notes: string | null; instructions: string | null; gif_url: string | null; video_url: string | null; ascendapi_id: string | null; created_at: string; }
+export interface ExerciseResponse {
+  id: string; name: string;
+  muscle_group: string | null;
+  muscle_groups: string | null;       // JSON array string
+  secondary_muscles: string | null;
+  equipment: string | null;
+  notes: string | null;
+  instructions: string | null;
+  gif_url: string | null;
+  video_url: string | null;
+  source: string | null;
+  ascendapi_id: string | null;
+  workoutx_id: string | null;
+  created_at: string;
+}
 
 export interface TemplateExerciseCreate { exercise_id: string; order?: number; target_sets?: number; target_reps?: number; target_weight_kg?: number; notes?: string; }
 
@@ -174,6 +190,7 @@ export interface BackupStatus {
 export interface AdminUser { id: string; email: string; display_name: string; is_active: boolean; created_at: string; }
 
 export interface SeedEstimate {
+  provider: string;
   metadata_requests: number;
   gif_requests: number;
   total_requests: number;
@@ -183,6 +200,7 @@ export interface SeedEstimate {
 
 export interface SeedResult {
   status: string;
+  provider: string;
   added: number;
   skipped: number;
   total_fetched: number;
@@ -203,8 +221,25 @@ export interface MediaStatus {
   media_dir: string;
   gif_count: number;
   cifs_configured: boolean;
-  api_key_configured: boolean;
-  api_key_preview: string;
+  providers: {
+    ascendapi: { configured: boolean };
+    workoutx:  { configured: boolean };
+  };
+}
+
+export interface ApiKeyProvider {
+  provider: string;
+  name: string;
+  configured: boolean;
+  enabled: boolean;
+  preview: string;
+  free_quota: number;
+  docs_url: string;
+  signup_instructions: string;
+}
+
+export interface ApiKeysList {
+  providers: ApiKeyProvider[];
 }
 
 export interface SeedLogEntry {
