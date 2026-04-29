@@ -74,6 +74,25 @@ async def fetch_exercises_by_body_part(
             headers=_build_headers(api_key),
             params={"limit": limit, "offset": offset},
         )
+        # Surface auth failures clearly — don't silently return empty
+        if resp.status_code == 401:
+            raise httpx.HTTPStatusError(
+                "WorkoutX rejected the API key (401 Unauthorized). "
+                "Verify the key in Admin → API Keys. WorkoutX keys must start with 'wx_'.",
+                request=resp.request, response=resp,
+            )
+        if resp.status_code == 403:
+            raise httpx.HTTPStatusError(
+                "WorkoutX returned 403 Forbidden — the key may be disabled, "
+                "or you're hitting a feature not on your plan.",
+                request=resp.request, response=resp,
+            )
+        if resp.status_code == 429:
+            raise httpx.HTTPStatusError(
+                "WorkoutX rate limit hit (429). Wait a minute and try again, "
+                "or check your monthly quota.",
+                request=resp.request, response=resp,
+            )
         resp.raise_for_status()
         data = resp.json()
     return data if isinstance(data, list) else data.get("data", [])
@@ -84,9 +103,13 @@ async def fetch_all_exercises(api_key: str, limit_per_part: int = 10) -> list[di
     Fetches exercises across all body parts.
     Free plan: max 10 per request, ~10 requests total = 100 exercises.
     Basic+: can use limit_per_part=100 for ~1,000 exercises in 10 requests.
+
+    Raises an exception immediately on auth/quota errors so the seed log
+    captures the real reason instead of silently returning 0 exercises.
     """
     all_exercises = []
     seen_ids: set[str] = set()
+    first_error: Optional[Exception] = None
 
     for part in BODY_PARTS:
         try:
@@ -97,6 +120,13 @@ async def fetch_all_exercises(api_key: str, limit_per_part: int = 10) -> list[di
                     seen_ids.add(ex_id)
                     all_exercises.append(ex)
             logger.info("WorkoutX: fetched %d exercises for: %s", len(exercises), part)
+        except httpx.HTTPStatusError as e:
+            # Auth/quota errors are global — fail fast on the first one
+            if e.response.status_code in (401, 403, 429):
+                if first_error is None:
+                    first_error = e
+                    raise  # bubble up immediately
+            logger.warning("WorkoutX: failed for %s: %s", part, e)
         except Exception as e:
             logger.warning("WorkoutX: failed for %s: %s", part, e)
 

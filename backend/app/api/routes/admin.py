@@ -145,9 +145,25 @@ async def save_key(
 ):
     if payload.provider not in ("ascendapi", "workoutx"):
         raise HTTPException(status_code=400, detail=f"Unknown provider: {payload.provider}")
-    if not payload.api_key.strip():
+    key = payload.api_key.strip()
+    if not key:
         raise HTTPException(status_code=400, detail="API key cannot be empty")
-    record = await set_api_key(db, payload.provider, payload.api_key.strip())
+
+    # Validate key format per provider — these are easy to mix up
+    if payload.provider == "workoutx" and not key.startswith("wx_"):
+        raise HTTPException(
+            status_code=400,
+            detail="WorkoutX keys must start with 'wx_'. You may have pasted an AscendAPI/RapidAPI key. "
+                   "Sign up at https://workoutxapp.com/dashboard.html to get a WorkoutX key.",
+        )
+    if payload.provider == "ascendapi" and key.startswith("wx_"):
+        raise HTTPException(
+            status_code=400,
+            detail="That looks like a WorkoutX key (starts with 'wx_'), not an AscendAPI key. "
+                   "AscendAPI keys come from RapidAPI — see signup instructions.",
+        )
+
+    record = await set_api_key(db, payload.provider, key)
     return {"status": "saved", "provider": record.provider, "preview": mask_key(record.api_key)}
 
 
@@ -285,10 +301,15 @@ async def seed_exercises(
             raw_exercises = await module.fetch_all_exercises(api_key, limit_per_part=limit)
             log(f"Fetched {len(raw_exercises)} exercises from {prov}")
             total_fetched += len(raw_exercises)
+
+            # Empty result with no caught exception means provider returned nothing valid
+            if len(raw_exercises) == 0:
+                log(f"WARNING: {prov} returned 0 exercises. Check API key validity and quota.")
         except Exception as e:
-            error_msg = f"{prov} fetch failed: {str(e)}"
+            error_msg = f"{prov} fetch failed: {type(e).__name__}: {str(e)}"
             log(f"ERROR: {error_msg}")
             if provider == "both":
+                # In "both" mode, log the failure but try the other provider
                 continue
             seed_log.status = "error"
             seed_log.error = error_msg
@@ -339,7 +360,15 @@ async def seed_exercises(
     await db.flush()
     log(f"Seed complete — added: {total_added}, skipped: {total_skipped}, GIFs: {total_gifs}")
 
-    seed_log.status = "success"
+    # If provider was meant to fetch but returned nothing, treat as error
+    # (most common cause: invalid API key — the provider's fetch_all_exercises
+    # caught exceptions silently in earlier versions).
+    if total_fetched == 0:
+        seed_log.status = "error"
+        seed_log.error = "No exercises fetched from any provider. Check API keys and quota."
+    else:
+        seed_log.status = "success"
+
     seed_log.added = total_added
     seed_log.skipped = total_skipped
     seed_log.gifs_downloaded = total_gifs
@@ -356,6 +385,50 @@ async def seed_exercises(
         "gifs_downloaded": total_gifs,
         "media_storage": settings.media_storage,
     }
+
+
+@router.post("/exercises/recategorize")
+async def recategorize_exercises(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recomputes muscle_groups for existing exercises using their stored
+    muscle_group + secondary_muscles fields. Useful after upgrading from v0.0.5
+    where exercises were tagged with a single category — this re-runs the
+    multi-category mapper on existing data without hitting any external API.
+    """
+    from app.services.muscle_mapping import map_muscles_to_categories, serialize_categories
+
+    result = await db.execute(select(Exercise).where(Exercise.user_id == user_id))
+    exercises = result.scalars().all()
+
+    updated = 0
+    for ex in exercises:
+        secondary: list[str] = []
+        if ex.secondary_muscles:
+            try:
+                parsed = json.loads(ex.secondary_muscles)
+                if isinstance(parsed, list):
+                    secondary = [str(s) for s in parsed]
+            except json.JSONDecodeError:
+                pass
+
+        # body_part comes from muscle_group (already mapped to category); pass it
+        # as the secondary fallback. The mapper handles already-categorized values.
+        cats = map_muscles_to_categories(
+            body_part=ex.muscle_group,
+            target=None,
+            secondary_muscles=secondary,
+        )
+
+        new_value = serialize_categories(cats)
+        if ex.muscle_groups != new_value:
+            ex.muscle_groups = new_value
+            updated += 1
+
+    await db.flush()
+    return {"status": "ok", "updated": updated, "total": len(exercises)}
 
 
 @router.post("/exercises/download-gifs")

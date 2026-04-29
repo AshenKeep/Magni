@@ -317,6 +317,19 @@ export default function AdminPage() {
             </button>
           </div>
 
+          {/* Recategorize button — for upgraded exercises that need multi-category tags */}
+          <button onClick={async () => {
+            setSeedResult(null); setSeedError("");
+            try {
+              const r = await api.admin.recategorize();
+              setSeedError(""); 
+              setSeedResult({ status: "ok", added: r.updated, skipped: r.total - r.updated, total_fetched: r.total, gifs_downloaded: 0, media_storage: "n/a", provider: "recategorize" } as SeedResult);
+              qc.invalidateQueries({ queryKey: ["exercises"] });
+            } catch (e: unknown) { setSeedError(e instanceof Error ? e.message : "Recategorize failed"); }
+          }} className="btn-secondary w-full text-xs">
+            ↻ Recategorize existing exercises (multi-muscle tags)
+          </button>
+
           {seedResult && <SeedResultBox result={seedResult} />}
           {seedError && (
             <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">{seedError}</div>

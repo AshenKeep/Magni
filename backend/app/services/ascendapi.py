@@ -71,13 +71,32 @@ async def fetch_exercises_by_body_part(
             headers=_build_headers(api_key),
             params={"bodyPart": body_part, "limit": limit, "offset": offset},
         )
+        if resp.status_code == 401:
+            raise httpx.HTTPStatusError(
+                "AscendAPI rejected the API key (401 Unauthorized). "
+                "Verify your RapidAPI key in Admin → API Keys.",
+                request=resp.request, response=resp,
+            )
+        if resp.status_code == 403:
+            raise httpx.HTTPStatusError(
+                "AscendAPI returned 403 Forbidden — the key may be disabled or not subscribed.",
+                request=resp.request, response=resp,
+            )
+        if resp.status_code == 429:
+            raise httpx.HTTPStatusError(
+                "AscendAPI rate limit hit (429). Free plan is 2,000/month — check your usage.",
+                request=resp.request, response=resp,
+            )
         resp.raise_for_status()
         data = resp.json()
     return data.get("data", data) if isinstance(data, dict) else data
 
 
 async def fetch_all_exercises(api_key: str, limit_per_part: int = 25) -> list[dict]:
-    """Free plan: 2,000 req/month. This uses ~9 requests (1 per body part)."""
+    """
+    Free plan: 2,000 req/month. This uses ~9 requests (1 per body part).
+    Raises immediately on auth/quota errors so the seed log shows the real reason.
+    """
     all_exercises = []
     seen_ids: set[str] = set()
 
@@ -90,6 +109,11 @@ async def fetch_all_exercises(api_key: str, limit_per_part: int = 25) -> list[di
                     seen_ids.add(ex_id)
                     all_exercises.append(ex)
             logger.info("AscendAPI: fetched %d exercises for: %s", len(exercises), part)
+        except httpx.HTTPStatusError as e:
+            # Auth/quota errors are global — fail fast on the first one
+            if e.response.status_code in (401, 403, 429):
+                raise
+            logger.warning("AscendAPI: failed for %s: %s", part, e)
         except Exception as e:
             logger.warning("AscendAPI: failed for %s: %s", part, e)
 
