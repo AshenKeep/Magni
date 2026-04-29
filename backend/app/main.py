@@ -104,10 +104,12 @@ async def health():
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
 
+# Serve locally stored exercise GIFs - MUST be before the SPA fallback route
+if MEDIA_DIR.exists():
+    app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
+
+# SPA fallback - this catches ALL remaining routes, so it must be last
+if STATIC_DIR.exists():
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
         return FileResponse(str(INDEX))
-
-# Serve locally stored exercise GIFs
-if MEDIA_DIR.exists():
-    app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
