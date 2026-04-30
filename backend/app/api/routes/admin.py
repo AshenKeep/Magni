@@ -429,6 +429,73 @@ async def recategorize_exercises(
     return {"status": "ok", "updated": updated, "total": len(exercises)}
 
 
+@router.get("/debug/workoutx-gif/{exercise_id}")
+async def debug_workoutx_gif(
+    exercise_id: str,
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Debug endpoint: tries multiple auth strategies on a WorkoutX GIF endpoint
+    and reports which (if any) succeed. Helps diagnose 401 issues.
+
+    Try with: GET /api/admin/debug/workoutx-gif/0009
+    """
+    import httpx as _httpx
+
+    api_key = await get_api_key(db, "workoutx")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No WorkoutX API key configured")
+
+    base_url = f"https://api.workoutxapp.com/v1/gifs/{exercise_id}.gif"
+    results = []
+
+    strategies = [
+        ("header_X-WorkoutX-Key", base_url, {"X-WorkoutX-Key": api_key}),
+        ("header_Authorization_Bearer", base_url, {"Authorization": f"Bearer {api_key}"}),
+        ("header_x-api-key", base_url, {"x-api-key": api_key}),
+        ("query_api-key", f"{base_url}?api-key={api_key}", {}),
+        ("query_apiKey", f"{base_url}?apiKey={api_key}", {}),
+        ("query_key", f"{base_url}?key={api_key}", {}),
+    ]
+
+    async with _httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+        for name, url, headers in strategies:
+            try:
+                resp = await client.get(url, headers=headers)
+                results.append({
+                    "strategy": name,
+                    "status": resp.status_code,
+                    "content_type": resp.headers.get("content-type", ""),
+                    "content_length": resp.headers.get("content-length", ""),
+                    "location": resp.headers.get("location", ""),
+                    "body_preview": resp.text[:200] if resp.status_code != 200 else "[binary]",
+                })
+            except Exception as e:
+                results.append({"strategy": name, "error": str(e)})
+
+    # Also try fetching the metadata endpoint to confirm key works at all
+    try:
+        async with _httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                "https://api.workoutxapp.com/v1/exercises?limit=1",
+                headers={"X-WorkoutX-Key": api_key},
+            )
+            metadata_check = {
+                "status": resp.status_code,
+                "body_preview": resp.text[:300],
+            }
+    except Exception as e:
+        metadata_check = {"error": str(e)}
+
+    return {
+        "exercise_id": exercise_id,
+        "key_preview": mask_key(api_key),
+        "metadata_endpoint_check": metadata_check,
+        "gif_strategies": results,
+    }
+
+
 @router.post("/exercises/download-gifs")
 async def download_gifs_for_existing(
     user_id: str = Depends(get_current_user_id),

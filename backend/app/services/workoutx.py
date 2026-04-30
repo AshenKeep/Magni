@@ -136,15 +136,17 @@ async def fetch_all_exercises(api_key: str, limit_per_part: int = 10) -> list[di
 async def download_gif(gif_url: str, exercise_id: str, api_key: str | None = None) -> Optional[str]:
     """
     WorkoutX GIF endpoints (api.workoutxapp.com/v1/gifs/{id}) are auth-protected.
-    Must pass X-WorkoutX-Key header when downloading.
 
-    Always caches locally — WorkoutX GIFs cannot be served externally because
-    the URL is auth-protected and browsers don't have the API key.
+    NOTE: We use the ?api-key= query parameter rather than the X-WorkoutX-Key
+    header because the GIF endpoint redirects to Supabase storage, and httpx
+    strips Authorization-style headers when following cross-origin redirects.
+    Query params survive redirects intact.
+
+    Always caches locally — even in 'external' mode — because the source URL
+    requires auth that the browser doesn't have.
     """
-    # Force local caching for WorkoutX even in 'external' mode — see above
     settings = get_settings()
     if settings.media_storage == "external":
-        # Use a local cache directory anyway — WorkoutX GIFs MUST be cached
         media_dir = Path(settings.media_dir)
         media_dir.mkdir(parents=True, exist_ok=True)
     else:
@@ -159,21 +161,35 @@ async def download_gif(gif_url: str, exercise_id: str, api_key: str | None = Non
     if dest.exists():
         return local_url
 
-    try:
-        # Add auth header for WorkoutX-hosted GIFs
-        headers = {}
-        if api_key and "workoutxapp.com" in gif_url:
-            headers["X-WorkoutX-Key"] = api_key
+    # Try multiple auth strategies — WorkoutX docs say both work, but observed
+    # behaviour shows the GIF endpoint behaves differently from metadata.
+    auth_attempts = []
+    if api_key and "workoutxapp.com" in gif_url:
+        # Strategy 1: query param auth (survives redirects)
+        sep = "&" if "?" in gif_url else "?"
+        auth_attempts.append(("query", f"{gif_url}{sep}api-key={api_key}", {}))
+        # Strategy 2: header auth as fallback
+        auth_attempts.append(("header", gif_url, {"X-WorkoutX-Key": api_key}))
+    else:
+        auth_attempts.append(("none", gif_url, {}))
 
-        async with httpx.AsyncClient(timeout=60) as client:
-            resp = await client.get(gif_url, follow_redirects=True, headers=headers)
-            resp.raise_for_status()
-            dest.write_bytes(resp.content)
-        return local_url
-    except Exception as e:
-        logger.warning("WorkoutX: GIF download failed for %s: %s", gif_url, e)
-        return gif_url  # fall back to original URL (won't work but won't crash)
-        return gif_url
+    last_error: Optional[str] = None
+    for method, url, headers in auth_attempts:
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.get(url, follow_redirects=True, headers=headers)
+                if resp.status_code == 200:
+                    dest.write_bytes(resp.content)
+                    logger.info("WorkoutX: GIF downloaded for %s using %s auth", exercise_id, method)
+                    return local_url
+                last_error = f"{method} auth: HTTP {resp.status_code}"
+                logger.warning("WorkoutX: GIF %s — %s", exercise_id, last_error)
+        except Exception as e:
+            last_error = f"{method} auth: {type(e).__name__}: {e}"
+            logger.warning("WorkoutX: GIF %s — %s", exercise_id, last_error)
+
+    logger.warning("WorkoutX: all auth methods failed for %s. Last: %s", gif_url, last_error)
+    return gif_url  # store original URL (won't display but won't crash)
 
 
 def normalize_exercise(raw: dict) -> dict:
