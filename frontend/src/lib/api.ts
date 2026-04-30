@@ -112,6 +112,7 @@ export const api = {
     seedExercises:   (provider: string, downloadGifs: boolean) => request<SeedResult>(`/api/admin/exercises/seed?provider=${provider}&download_gifs=${downloadGifs}`, { method: "POST" }),
     downloadGifs:    () => request<GifDownloadResult>("/api/admin/exercises/download-gifs", { method: "POST" }),
     recategorize:    () => request<{ status: string; updated: number; total: number }>("/api/admin/exercises/recategorize", { method: "POST" }),
+    debugWorkoutXGif: (id: string) => request<unknown>(`/api/admin/debug/workoutx-gif/${id}`),
     mediaStatus:     () => request<MediaStatus>("/api/admin/exercises/media/status"),
     seedLogs:        () => request<SeedLogEntry[]>("/api/admin/logs/seed"),
   },

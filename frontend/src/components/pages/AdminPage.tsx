@@ -115,6 +115,7 @@ export default function AdminPage() {
   const [seedResult, setSeedResult] = useState<SeedResult | GifDownloadResult | null>(null);
   const [seedError, setSeedError] = useState("");
   const [provider, setProvider] = useState<"ascendapi" | "workoutx" | "both">("ascendapi");
+  const [debugResult, setDebugResult] = useState<string>("");
 
   const { data: backupStatus } = useQuery({ queryKey: ["backup-status"], queryFn: api.admin.backupStatus });
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: api.admin.listUsers });
@@ -329,6 +330,23 @@ export default function AdminPage() {
           }} className="btn-secondary w-full text-xs">
             ↻ Recategorize existing exercises (multi-muscle tags)
           </button>
+
+          {/* Debug button — runs all auth strategies against WorkoutX GIF endpoint */}
+          <button onClick={async () => {
+            setDebugResult("Running…");
+            try {
+              const r = await api.admin.debugWorkoutXGif("0009");
+              setDebugResult(JSON.stringify(r, null, 2));
+            } catch (e: unknown) {
+              setDebugResult("ERROR: " + (e instanceof Error ? e.message : String(e)));
+            }
+          }} className="btn-secondary w-full text-xs">
+            🔍 Debug WorkoutX GIF auth (test all methods on exercise 0009)
+          </button>
+
+          {debugResult && (
+            <pre className="bg-bg-secondary border border-border text-xs rounded-lg p-3 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">{debugResult}</pre>
+          )}
 
           {seedResult && <SeedResultBox result={seedResult} />}
           {seedError && (
