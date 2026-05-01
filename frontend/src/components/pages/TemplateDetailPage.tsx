@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { api, type TemplateExerciseCreate, type TemplateExerciseResponse } from "../../lib/api";
+import { api, type ExerciseResponse, type TemplateExerciseCreate, type TemplateExerciseResponse } from "../../lib/api";
 import { ExercisePicker } from "../shared/ExercisePicker";
 import { LOG_TYPE_LABELS, formatDuration } from "../../lib/metrics";
 
@@ -41,7 +41,7 @@ export default function TemplateDetailPage() {
   const exerciseMap = (exercises ?? []).reduce((acc, e) => {
     acc[e.id] = e;
     return acc;
-  }, {} as Record<string, typeof exercises[number]>);
+  }, {} as Record<string, ExerciseResponse>);
 
   const addMutation = useMutation({
     mutationFn: (payload: TemplateExerciseCreate) =>
