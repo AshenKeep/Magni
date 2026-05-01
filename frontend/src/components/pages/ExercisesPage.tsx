@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ExerciseResponse } from "@/lib/api";
 import { parseMuscleGroups, exerciseMatchesMuscle, MUSCLE_CATEGORIES } from "@/lib/muscleGroups";
+import { AddToTemplateModal } from "@/components/shared/AddToTemplateModal";
 
 const MUSCLE_GROUPS = MUSCLE_CATEGORIES;
 const EQUIPMENT = ["Barbell","Dumbbell","Machine","Cable","Bodyweight","Resistance Band","Kettlebell","Other"];
@@ -159,6 +160,7 @@ export default function ExercisesPage() {
   const qc = useQueryClient();
   const [formModal, setFormModal] = useState<"new" | ExerciseResponse | null>(null);
   const [detailModal, setDetailModal] = useState<ExerciseResponse | null>(null);
+  const [addToTemplate, setAddToTemplate] = useState<ExerciseResponse | null>(null);
   const [search, setSearch] = useState("");
   const [filterGroup, setFilterGroup] = useState("");
 
@@ -241,6 +243,7 @@ export default function ExercisesPage() {
                   </div>
 
                   <div className="flex gap-3 shrink-0">
+                    <button onClick={() => setAddToTemplate(ex)} className="text-xs text-blue hover:text-blue-dim transition-colors">+ Template</button>
                     <button onClick={() => { setDetailModal(null); setFormModal(ex); }} className="text-xs text-blue hover:text-blue-dim transition-colors">Edit</button>
                     <button onClick={() => { if (confirm(`Delete "${ex.name}"?`)) deleteMutation.mutate(ex.id); }}
                       className="text-xs text-secondary hover:text-danger transition-colors">Delete</button>
@@ -280,6 +283,13 @@ export default function ExercisesPage() {
         <ExerciseFormModal
           exercise={formModal === "new" ? undefined : formModal}
           onClose={() => setFormModal(null)}
+        />
+      )}
+
+      {addToTemplate && (
+        <AddToTemplateModal
+          exercise={addToTemplate}
+          onClose={() => setAddToTemplate(null)}
         />
       )}
     </div>

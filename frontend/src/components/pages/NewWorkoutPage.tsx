@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, ExerciseResponse, WorkoutSetResponse } from "@/lib/api";
+import { api, ExerciseResponse, WorkoutSetResponse, type LogType, type MetricField } from "@/lib/api";
 import { format } from "date-fns";
+import { DynamicMetricFields } from "@/components/shared/DynamicMetricFields";
+import { defaultFieldsFor, METRIC_TO_WORKOUT_SET_KEY, LOG_TYPE_LABELS } from "@/lib/metrics";
 
 // --- Timer ---
 function useTimer(startTime: Date) {
@@ -21,33 +23,61 @@ function useTimer(startTime: Date) {
     : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-// --- Set row ---
+// Helper: determine which metric fields are populated on an existing set so
+// we know what inputs to render. Used when loading sets pre-filled from a
+// template — we honour whatever the template put on the set.
+function detectEnabledFields(set: WorkoutSetResponse): MetricField[] {
+  const enabled: MetricField[] = [];
+  if (set.reps != null) enabled.push("reps");
+  if (set.weight_kg != null) enabled.push("weight_kg");
+  if (set.duration_seconds != null) enabled.push("duration_seconds");
+  if (set.distance_m != null) enabled.push("distance_m");
+  if (set.pace_seconds_per_km != null) enabled.push("pace_seconds_per_km");
+  if (set.incline_pct != null) enabled.push("incline_pct");
+  if (set.laps != null) enabled.push("laps");
+  if (set.avg_heart_rate != null) enabled.push("avg_heart_rate");
+  if (set.calories != null) enabled.push("calories");
+  // If nothing is set yet, fall back to log_type defaults
+  if (enabled.length === 0) return defaultFieldsFor(set.log_type as LogType);
+  return enabled;
+}
+
+// --- Set row (type-aware) ---
 interface SetRowProps {
   set: WorkoutSetResponse & { exercise_name?: string };
-  onUpdate: (id: string, field: "reps" | "weight_kg" | "rpe", value: number | null) => void;
+  onUpdate: (id: string, patch: Partial<WorkoutSetResponse>) => void;
   onDelete: (id: string) => void;
 }
 
 function SetRow({ set, onUpdate, onDelete }: SetRowProps) {
+  const [enabled, setEnabled] = useState<MetricField[]>(() => detectEnabledFields(set));
+  // Snapshot of values for the dynamic-field component
+  const values: Partial<Record<MetricField, number | null>> = {
+    reps: set.reps, weight_kg: set.weight_kg,
+    duration_seconds: set.duration_seconds, distance_m: set.distance_m,
+    pace_seconds_per_km: set.pace_seconds_per_km, incline_pct: set.incline_pct,
+    laps: set.laps, avg_heart_rate: set.avg_heart_rate, calories: set.calories,
+  };
+
+  const handleValueChange = (field: MetricField, value: number | null) => {
+    const key = METRIC_TO_WORKOUT_SET_KEY[field] as keyof WorkoutSetResponse;
+    onUpdate(set.id, { [key]: value } as Partial<WorkoutSetResponse>);
+  };
+
   return (
-    <div className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-2 items-center py-2 border-b border-border/50">
-      <span className="text-xs text-secondary w-6 text-center">{set.set_number}</span>
-      <input
-        type="number" placeholder="kg" value={set.weight_kg ?? ""}
-        onChange={(e) => onUpdate(set.id, "weight_kg", e.target.value ? Number(e.target.value) : null)}
-        className="input text-center text-sm py-1.5"
+    <div className="border-b border-border/50 py-2 px-1">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-secondary">Set {set.set_number}</span>
+        <button onClick={() => onDelete(set.id)} className="text-secondary hover:text-danger text-xs">×</button>
+      </div>
+      <DynamicMetricFields
+        logType={(set.log_type ?? "strength") as LogType}
+        enabled={enabled}
+        values={values}
+        onEnabledChange={setEnabled}
+        onValueChange={handleValueChange}
+        compact
       />
-      <input
-        type="number" placeholder="reps" value={set.reps ?? ""}
-        onChange={(e) => onUpdate(set.id, "reps", e.target.value ? Number(e.target.value) : null)}
-        className="input text-center text-sm py-1.5"
-      />
-      <input
-        type="number" placeholder="RPE" min={1} max={10} value={set.rpe ?? ""}
-        onChange={(e) => onUpdate(set.id, "rpe", e.target.value ? Number(e.target.value) : null)}
-        className="input text-center text-sm py-1.5"
-      />
-      <button onClick={() => onDelete(set.id)} className="text-secondary hover:text-danger text-sm transition-colors px-1">×</button>
     </div>
   );
 }
@@ -132,6 +162,29 @@ export default function NewWorkoutPage() {
 
   const exerciseMap = (exercises ?? []).reduce((acc, ex) => { acc[ex.id] = ex; return acc; }, {} as Record<string, ExerciseResponse>);
 
+  // If we navigated here with ?workout_id=… (i.e. started from a template),
+  // load the existing workout and pre-fill the set list. This is what makes
+  // template-driven workouts editable in v0.0.7.
+  useEffect(() => {
+    if (!workoutId || sets.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const w = await api.workouts.get(workoutId);
+        if (cancelled) return;
+        if (w.title) setTitle(w.title);
+        const enriched = w.sets.map(s => ({
+          ...s,
+          exercise_name: exerciseMap[s.exercise_id]?.name ?? "",
+        }));
+        setSets(enriched);
+      } catch { /* swallow — empty workout is fine */ }
+    })();
+    return () => { cancelled = true; };
+    // Only run on first mount with a workout ID
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workoutId, exercises]);
+
   // Create workout on first set add if not already created
   async function ensureWorkout(): Promise<string> {
     if (workoutId) return workoutId;
@@ -142,16 +195,19 @@ export default function NewWorkoutPage() {
 
   async function addExercise(ex: ExerciseResponse) {
     const wid = await ensureWorkout();
-    // Find max set number for this exercise in current workout
     const existingSets = sets.filter(s => s.exercise_id === ex.id);
     const setNum = existingSets.length + 1;
     const lastSet = existingSets[existingSets.length - 1];
+    const logType: LogType = (lastSet?.log_type as LogType) ?? "strength";
 
     const newSet = await api.workouts.addSet(wid, {
       exercise_id: ex.id,
       set_number: setNum,
+      log_type: logType,
       reps: lastSet?.reps ?? undefined,
       weight_kg: lastSet?.weight_kg ?? undefined,
+      duration_seconds: lastSet?.duration_seconds ?? undefined,
+      distance_m: lastSet?.distance_m ?? undefined,
     });
     setSets(prev => [...prev, { ...newSet, exercise_name: ex.name }]);
   }
@@ -162,21 +218,24 @@ export default function NewWorkoutPage() {
     const existingSets = sets.filter(s => s.exercise_id === exerciseId);
     const setNum = existingSets.length + 1;
     const lastSet = existingSets[existingSets.length - 1];
+    const logType: LogType = (lastSet?.log_type as LogType) ?? "strength";
 
     const newSet = await api.workouts.addSet(wid, {
       exercise_id: exerciseId,
       set_number: setNum,
+      log_type: logType,
       reps: lastSet?.reps ?? undefined,
       weight_kg: lastSet?.weight_kg ?? undefined,
+      duration_seconds: lastSet?.duration_seconds ?? undefined,
+      distance_m: lastSet?.distance_m ?? undefined,
     });
     setSets(prev => [...prev, { ...newSet, exercise_name: ex?.name ?? "" }]);
   }
 
-  async function updateSet(setId: string, field: "reps" | "weight_kg" | "rpe", value: number | null) {
+  async function updateSet(setId: string, patch: Partial<WorkoutSetResponse>) {
     if (!workoutId) return;
-    setSets(prev => prev.map(s => s.id === setId ? { ...s, [field]: value } : s));
-    // Debounce the API call would be ideal but for simplicity update immediately
-    await api.workouts.updateSet(workoutId, setId, { [field]: value });
+    setSets(prev => prev.map(s => s.id === setId ? { ...s, ...patch } : s));
+    await api.workouts.updateSet(workoutId, setId, patch);
   }
 
   async function deleteSet(setId: string) {
@@ -226,29 +285,30 @@ export default function NewWorkoutPage() {
       </div>
 
       {/* Exercise groups */}
-      {Object.entries(exerciseGroups).map(([exerciseId, exSets]) => (
-        <div key={exerciseId} className="card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card">
-            <p className="font-medium text-primary">{exSets[0].exercise_name}</p>
-            <button
-              onClick={() => addSetToExercise(exerciseId)}
-              className="text-xs text-blue hover:text-blue-dim transition-colors"
-            >
-              + Add set
-            </button>
-          </div>
-          <div className="px-4 py-2">
-            <div className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-2 py-1 mb-1">
-              {["Set","kg","Reps","RPE",""].map((h, i) => (
-                <span key={i} className="text-xs text-secondary text-center">{h}</span>
+      {Object.entries(exerciseGroups).map(([exerciseId, exSets]) => {
+        const logType = (exSets[0].log_type ?? "strength") as LogType;
+        return (
+          <div key={exerciseId} className="card overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card">
+              <div>
+                <p className="font-medium text-primary">{exSets[0].exercise_name}</p>
+                <p className="text-[10px] text-secondary uppercase tracking-wide">{LOG_TYPE_LABELS[logType]}</p>
+              </div>
+              <button
+                onClick={() => addSetToExercise(exerciseId)}
+                className="text-xs text-blue hover:text-blue-dim transition-colors"
+              >
+                + Add set
+              </button>
+            </div>
+            <div className="px-4 py-2 space-y-1">
+              {exSets.sort((a, b) => a.set_number - b.set_number).map((s) => (
+                <SetRow key={s.id} set={s} onUpdate={updateSet} onDelete={deleteSet} />
               ))}
             </div>
-            {exSets.map((s) => (
-              <SetRow key={s.id} set={s} onUpdate={updateSet} onDelete={deleteSet} />
-            ))}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Add exercise button */}
       <button

@@ -5,6 +5,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.7] — 2026-04-30
+
+### Added
+
+#### Backend
+- **`log_type` field on workout sets and template exercises** — every set is classified as `strength`, `cardio`, or `mobility`. Drives which fields are meaningful and which inputs the UI shows. Defaults to `strength` for backwards compatibility.
+- **Per-set targets in templates** — new `template_sets` table lets each set in a template have its own log type and metric values. A single "Run + cool-down" exercise can now have set 1 = 5km in 25min and set 2 = 10 laps in 10min.
+- **Cardio metric fields on `workout_sets`** — `pace_seconds_per_km`, `incline_pct`, `laps`, `avg_heart_rate`, `calories` (existing `duration_seconds` and `distance_m` reused). All nullable, opt-in via the "+ Add field" UI.
+- **`PATCH /api/templates/{id}/exercises/{te_id}`** — edit a template-exercise (change log type, sets, notes) without removing and re-adding it. Replaces the full set list when `sets` is provided.
+- **Migration `0006`** — adds the new columns and `template_sets` table. Backfills existing `template_exercises` rows into single-row `template_sets` entries so old templates keep working.
+
+#### Frontend
+- **New template flow: empty-then-fill** — creating a template no longer requires picking exercises in one shot. Create with just a name → land on a detail page → add exercises one at a time via the picker.
+- **`ExercisePicker` modal** — two-pane, filterable exercise picker with preview pane (GIF + instructions). Filter by muscle group, search by name. Configure log type and per-set metrics inline before adding.
+- **`AddToTemplateModal`** — new "+ Template" button on every Exercises tab card opens a quick modal: pick a template, configure sets, confirm.
+- **`DynamicMetricFields` component** — opt-in metric-field UI with a "+ Add field" dropdown. Drives both template authoring and workout logging. Defaults differ per log type (strength → reps + weight, cardio → distance + duration, mobility → duration).
+- **`TemplateDetailPage`** — dedicated page for viewing/editing a template's exercises and per-set targets. Each row shows a one-line summary (e.g. "Set 1: 5km · 25:00").
+- **Workout logging supports cardio** — `NewWorkoutPage` now respects `log_type` per set. Templates pre-fill sets which the user can edit at log-time (in case targets weren't hit).
+
+### Changed
+
+- **TemplatesPage** simplified: list view + "+ New template" creates an empty template and routes to detail page. The old all-in-one create modal is gone.
+- **WorkoutSet schema** gains `log_type` and the new cardio fields. Old strength workouts continue to work — they just default to `log_type = 'strength'`.
+- **`api.workouts.updateSet`** signature now accepts any partial workout-set patch (used to be limited to `WorkoutSetCreate` shape).
+
+### Notes
+
+- AscendAPI exercises are still tagged based on their stored muscle groups; nothing about cardio detection is automatic. The UI picks a sensible default log type when you open the picker (Cardio muscle group → cardio default), but you can always override at add-time and again at log-time.
+- The legacy `template_exercises.target_sets/target_reps/target_weight_kg` columns remain for backwards compatibility — read by `start_workout_from_template` only as a fallback when no `template_sets` exist.
+
+---
+
 ## [0.0.6] — 2026-04-29
 
 ### Added

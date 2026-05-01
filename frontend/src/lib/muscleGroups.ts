@@ -15,6 +15,24 @@ export type MuscleCategory = typeof MUSCLE_CATEGORIES[number];
 export function parseMuscleGroups(
   muscle_groups: string | null,
   muscle_group: string | null,
+): string[];
+export function parseMuscleGroups(
+  ex: { muscle_groups: string | null; muscle_group: string | null },
+): string[];
+export function parseMuscleGroups(
+  arg1: string | null | { muscle_groups: string | null; muscle_group: string | null },
+  arg2?: string | null,
+): string[] {
+  // Object overload
+  if (arg1 && typeof arg1 === "object") {
+    return parseMuscleGroupsImpl(arg1.muscle_groups, arg1.muscle_group);
+  }
+  return parseMuscleGroupsImpl(arg1 as string | null, arg2 ?? null);
+}
+
+function parseMuscleGroupsImpl(
+  muscle_groups: string | null,
+  muscle_group: string | null,
 ): string[] {
   if (muscle_groups) {
     try {
@@ -34,5 +52,5 @@ export function exerciseMatchesMuscle(
   filter: string,
 ): boolean {
   if (filter === "all" || !filter) return true;
-  return parseMuscleGroups(ex.muscle_groups, ex.muscle_group).includes(filter);
+  return parseMuscleGroupsImpl(ex.muscle_groups, ex.muscle_group).includes(filter);
 }

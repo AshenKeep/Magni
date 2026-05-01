@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.6
+**Version:** v0.0.7
 
 A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 
@@ -197,9 +197,15 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 | `GET` | `/api/exercises/` | List exercises |
 | `PATCH` | `/api/exercises/{id}` | Update exercise |
 | `DELETE` | `/api/exercises/{id}` | Delete exercise |
-| `POST` | `/api/templates/` | Create template |
+| `POST` | `/api/templates/` | Create template (typically with no exercises — add them after) |
 | `GET` | `/api/templates/` | List templates |
-| `POST` | `/api/templates/{id}/start` | Start workout from template |
+| `GET` | `/api/templates/{id}` | Get template with exercises and per-set targets |
+| `PATCH` | `/api/templates/{id}` | Update template name/notes |
+| `DELETE` | `/api/templates/{id}` | Delete template |
+| `POST` | `/api/templates/{id}/exercises` | Add an exercise (with per-set targets) to a template |
+| `PATCH` | `/api/templates/{id}/exercises/{te_id}` | Edit log type or sets on a template-exercise |
+| `DELETE` | `/api/templates/{id}/exercises/{te_id}` | Remove an exercise from a template |
+| `POST` | `/api/templates/{id}/start` | Start workout from template (pre-fills sets you can edit) |
 | `POST` | `/api/stats/daily` | Upsert Garmin daily stats |
 | `GET` | `/api/stats/daily` | Query daily stats |
 | `POST` | `/api/stats/hr` | Bulk insert HR readings |

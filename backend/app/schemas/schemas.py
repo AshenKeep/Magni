@@ -92,10 +92,19 @@ class ExerciseResponse(BaseModel):
 class WorkoutSetCreate(BaseModel):
     exercise_id: UUID
     set_number: int
+    log_type: str = "strength"  # strength | cardio | mobility
+    # Strength
     reps: Optional[int] = None
     weight_kg: Optional[float] = None
+    # Cardio
     duration_seconds: Optional[int] = None
     distance_m: Optional[float] = None
+    pace_seconds_per_km: Optional[int] = None
+    incline_pct: Optional[float] = None
+    laps: Optional[int] = None
+    avg_heart_rate: Optional[int] = None
+    calories: Optional[int] = None
+    # Common
     rpe: Optional[int] = None
     notes: Optional[str] = None
     client_id: Optional[str] = None
@@ -105,10 +114,16 @@ class WorkoutSetResponse(BaseModel):
     id: UUID
     exercise_id: UUID
     set_number: int
+    log_type: str
     reps: Optional[int]
     weight_kg: Optional[float]
     duration_seconds: Optional[int]
     distance_m: Optional[float]
+    pace_seconds_per_km: Optional[int]
+    incline_pct: Optional[float]
+    laps: Optional[int]
+    avg_heart_rate: Optional[int]
+    calories: Optional[int]
     rpe: Optional[int]
     notes: Optional[str]
     logged_at: datetime
@@ -132,10 +147,16 @@ class WorkoutCreate(BaseModel):
 
 
 class WorkoutSetUpdate(BaseModel):
+    log_type: Optional[str] = None
     reps: Optional[int] = None
     weight_kg: Optional[float] = None
     duration_seconds: Optional[int] = None
     distance_m: Optional[float] = None
+    pace_seconds_per_km: Optional[int] = None
+    incline_pct: Optional[float] = None
+    laps: Optional[int] = None
+    avg_heart_rate: Optional[int] = None
+    calories: Optional[int] = None
     rpe: Optional[int] = None
     notes: Optional[str] = None
 
@@ -249,30 +270,79 @@ class DashboardStats(BaseModel):
 
 # --- Templates ---
 
+class TemplateSetCreate(BaseModel):
+    set_number: int
+    log_type: str = "strength"
+    target_reps: Optional[int] = None
+    target_weight_kg: Optional[float] = None
+    target_duration_seconds: Optional[int] = None
+    target_distance_m: Optional[float] = None
+    target_pace_seconds_per_km: Optional[int] = None
+    target_incline_pct: Optional[float] = None
+    target_laps: Optional[int] = None
+    target_avg_heart_rate: Optional[int] = None
+    target_calories: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class TemplateSetResponse(BaseModel):
+    id: UUID
+    set_number: int
+    log_type: str
+    target_reps: Optional[int]
+    target_weight_kg: Optional[float]
+    target_duration_seconds: Optional[int]
+    target_distance_m: Optional[float]
+    target_pace_seconds_per_km: Optional[int]
+    target_incline_pct: Optional[float]
+    target_laps: Optional[int]
+    target_avg_heart_rate: Optional[int]
+    target_calories: Optional[int]
+    notes: Optional[str]
+    model_config = {"from_attributes": True}
+
+
 class TemplateExerciseCreate(BaseModel):
     exercise_id: UUID
     order: int = 0
+    log_type: str = "strength"
+    # Legacy uniform-set fields — kept for backwards compatibility but
+    # `sets` (list of TemplateSetCreate) takes precedence when provided
     target_sets: Optional[int] = None
     target_reps: Optional[int] = None
     target_weight_kg: Optional[float] = None
     notes: Optional[str] = None
+    sets: list[TemplateSetCreate] = []
+
+
+class TemplateExerciseUpdate(BaseModel):
+    """Update an existing template_exercise. `sets` replaces the full list."""
+    order: Optional[int] = None
+    log_type: Optional[str] = None
+    target_sets: Optional[int] = None
+    target_reps: Optional[int] = None
+    target_weight_kg: Optional[float] = None
+    notes: Optional[str] = None
+    sets: Optional[list[TemplateSetCreate]] = None
 
 
 class TemplateExerciseResponse(BaseModel):
     id: UUID
     exercise_id: UUID
     order: int
+    log_type: str
     target_sets: Optional[int]
     target_reps: Optional[int]
     target_weight_kg: Optional[float]
     notes: Optional[str]
+    sets: list[TemplateSetResponse] = []
     model_config = {"from_attributes": True}
 
 
 class TemplateCreate(BaseModel):
     name: str
     notes: Optional[str] = None
-    exercises: list[TemplateExerciseCreate] = []
+    exercises: list[TemplateExerciseCreate] = []  # default empty — new flow adds them later
 
 
 class TemplateUpdate(BaseModel):

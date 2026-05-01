@@ -11,6 +11,7 @@ import WorkoutDetailPage from "@/components/pages/WorkoutDetailPage";
 import NewWorkoutPage from "@/components/pages/NewWorkoutPage";
 import ExercisesPage from "@/components/pages/ExercisesPage";
 import TemplatesPage from "@/components/pages/TemplatesPage";
+import TemplateDetailPage from "@/components/pages/TemplateDetailPage";
 import ActivityPage from "@/components/pages/ActivityPage";
 import AdminPage from "@/components/pages/AdminPage";
 
@@ -76,6 +77,7 @@ export default function App() {
             <Route path="workouts/:id" element={<WorkoutDetailPage />} />
             <Route path="exercises" element={<ExercisesPage />} />
             <Route path="templates" element={<TemplatesPage />} />
+            <Route path="templates/:id" element={<TemplateDetailPage />} />
             <Route path="activity" element={<ActivityPage />} />
             <Route path="admin" element={<AdminPage />} />
           </Route>

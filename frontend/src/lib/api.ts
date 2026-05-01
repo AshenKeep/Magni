@@ -66,7 +66,7 @@ export const api = {
     update: (id: string, body: Partial<WorkoutCreate>) => request<WorkoutResponse>(`/api/workouts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     delete: (id: string) => request<void>(`/api/workouts/${id}`, { method: "DELETE" }),
     addSet: (workoutId: string, body: WorkoutSetCreate) => request<WorkoutSetResponse>(`/api/workouts/${workoutId}/sets`, { method: "POST", body: JSON.stringify(body) }),
-    updateSet: (workoutId: string, setId: string, body: Partial<WorkoutSetCreate>) => request<WorkoutSetResponse>(`/api/workouts/${workoutId}/sets/${setId}`, { method: "PATCH", body: JSON.stringify(body) }),
+    updateSet: (workoutId: string, setId: string, body: Partial<WorkoutSetResponse> | Partial<WorkoutSetCreate>) => request<WorkoutSetResponse>(`/api/workouts/${workoutId}/sets/${setId}`, { method: "PATCH", body: JSON.stringify(body) }),
     deleteSet: (workoutId: string, setId: string) => request<void>(`/api/workouts/${workoutId}/sets/${setId}`, { method: "DELETE" }),
   },
 
@@ -84,6 +84,7 @@ export const api = {
     update: (id: string, body: { name?: string; notes?: string }) => request<TemplateResponse>(`/api/templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     delete: (id: string) => request<void>(`/api/templates/${id}`, { method: "DELETE" }),
     addExercise:    (id: string, body: TemplateExerciseCreate) => request<TemplateResponse>(`/api/templates/${id}/exercises`, { method: "POST", body: JSON.stringify(body) }),
+    updateExercise: (id: string, teId: string, body: TemplateExerciseUpdate) => request<TemplateResponse>(`/api/templates/${id}/exercises/${teId}`, { method: "PATCH", body: JSON.stringify(body) }),
     removeExercise: (id: string, exId: string) => request<void>(`/api/templates/${id}/exercises/${exId}`, { method: "DELETE" }),
     startWorkout:   (id: string) => request<{ workout_id: string }>(`/api/templates/${id}/start`, { method: "POST" }),
   },
@@ -138,8 +139,22 @@ export interface WorkoutResponse {
 }
 
 export interface WorkoutSetResponse {
-  id: string; exercise_id: string; set_number: number; reps: number | null;
-  weight_kg: number | null; duration_seconds: number | null; rpe: number | null; logged_at: string;
+  id: string;
+  exercise_id: string;
+  set_number: number;
+  log_type: LogType;
+  reps: number | null;
+  weight_kg: number | null;
+  duration_seconds: number | null;
+  distance_m: number | null;
+  pace_seconds_per_km: number | null;
+  incline_pct: number | null;
+  laps: number | null;
+  avg_heart_rate: number | null;
+  calories: number | null;
+  rpe: number | null;
+  notes: string | null;
+  logged_at: string;
 }
 
 export interface WorkoutCreate {
@@ -149,7 +164,21 @@ export interface WorkoutCreate {
 }
 
 export interface WorkoutSetCreate {
-  exercise_id: string; set_number: number; reps?: number; weight_kg?: number; rpe?: number; notes?: string; client_id?: string;
+  exercise_id: string;
+  set_number: number;
+  log_type?: LogType;
+  reps?: number;
+  weight_kg?: number;
+  duration_seconds?: number;
+  distance_m?: number;
+  pace_seconds_per_km?: number;
+  incline_pct?: number;
+  laps?: number;
+  avg_heart_rate?: number;
+  calories?: number;
+  rpe?: number;
+  notes?: string;
+  client_id?: string;
 }
 
 export interface ExerciseResponse {
@@ -168,13 +197,98 @@ export interface ExerciseResponse {
   created_at: string;
 }
 
-export interface TemplateExerciseCreate { exercise_id: string; order?: number; target_sets?: number; target_reps?: number; target_weight_kg?: number; notes?: string; }
+// ---------------------------------------------------------------------------
+// v0.0.7: per-set targets, log_type, and the cardio metric fields
+// ---------------------------------------------------------------------------
 
-export interface TemplateExerciseResponse { id: string; exercise_id: string; order: number; target_sets: number | null; target_reps: number | null; target_weight_kg: number | null; notes: string | null; }
+export type LogType = "strength" | "cardio" | "mobility";
 
-export interface TemplateCreate { name: string; notes?: string; exercises?: TemplateExerciseCreate[]; }
+/** All metric fields that can be tracked. UI uses the keys listed in `enabledFields`
+ *  to decide which inputs to show. "+ Add field" toggles fields in/out. */
+export type MetricField =
+  | "reps" | "weight_kg"
+  | "duration_seconds" | "distance_m" | "pace_seconds_per_km"
+  | "incline_pct" | "laps" | "avg_heart_rate" | "calories";
 
-export interface TemplateResponse { id: string; name: string; notes: string | null; created_at: string; updated_at: string; exercises: TemplateExerciseResponse[]; }
+export interface TemplateSetCreate {
+  set_number: number;
+  log_type: LogType;
+  target_reps?: number | null;
+  target_weight_kg?: number | null;
+  target_duration_seconds?: number | null;
+  target_distance_m?: number | null;
+  target_pace_seconds_per_km?: number | null;
+  target_incline_pct?: number | null;
+  target_laps?: number | null;
+  target_avg_heart_rate?: number | null;
+  target_calories?: number | null;
+  notes?: string | null;
+}
+
+export interface TemplateSetResponse {
+  id: string;
+  set_number: number;
+  log_type: LogType;
+  target_reps: number | null;
+  target_weight_kg: number | null;
+  target_duration_seconds: number | null;
+  target_distance_m: number | null;
+  target_pace_seconds_per_km: number | null;
+  target_incline_pct: number | null;
+  target_laps: number | null;
+  target_avg_heart_rate: number | null;
+  target_calories: number | null;
+  notes: string | null;
+}
+
+export interface TemplateExerciseCreate {
+  exercise_id: string;
+  order?: number;
+  log_type?: LogType;
+  // legacy (used as defaults if `sets` empty)
+  target_sets?: number;
+  target_reps?: number;
+  target_weight_kg?: number;
+  notes?: string;
+  sets?: TemplateSetCreate[];
+}
+
+export interface TemplateExerciseUpdate {
+  order?: number;
+  log_type?: LogType;
+  target_sets?: number;
+  target_reps?: number;
+  target_weight_kg?: number;
+  notes?: string;
+  sets?: TemplateSetCreate[];
+}
+
+export interface TemplateExerciseResponse {
+  id: string;
+  exercise_id: string;
+  order: number;
+  log_type: LogType;
+  target_sets: number | null;
+  target_reps: number | null;
+  target_weight_kg: number | null;
+  notes: string | null;
+  sets: TemplateSetResponse[];
+}
+
+export interface TemplateCreate {
+  name: string;
+  notes?: string;
+  exercises?: TemplateExerciseCreate[];   // optional — new flow creates empty
+}
+
+export interface TemplateResponse {
+  id: string;
+  name: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  exercises: TemplateExerciseResponse[];
+}
 
 export interface DailyStatResponse {
   id: string; date: string; steps: number | null; distance_m: number | null; active_calories: number | null;

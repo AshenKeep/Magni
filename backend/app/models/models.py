@@ -83,10 +83,20 @@ class WorkoutSet(Base):
     workout_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workouts.id"), nullable=False)
     exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
     set_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # log_type controls which fields are meaningful: strength | cardio | mobility
+    log_type: Mapped[str] = mapped_column(String(20), nullable=False, default="strength")
+    # Strength fields
     reps: Mapped[Optional[int]] = mapped_column(Integer)
     weight_kg: Mapped[Optional[float]] = mapped_column(Float)
+    # Cardio fields (all nullable — user picks which to track per-set via "+ Add field")
     duration_seconds: Mapped[Optional[int]] = mapped_column(Integer)
     distance_m: Mapped[Optional[float]] = mapped_column(Float)
+    pace_seconds_per_km: Mapped[Optional[int]] = mapped_column(Integer)
+    incline_pct: Mapped[Optional[float]] = mapped_column(Float)
+    laps: Mapped[Optional[int]] = mapped_column(Integer)
+    avg_heart_rate: Mapped[Optional[int]] = mapped_column(Integer)
+    calories: Mapped[Optional[int]] = mapped_column(Integer)
+    # Common
     rpe: Mapped[Optional[int]] = mapped_column(Integer)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -155,6 +165,9 @@ class TemplateExercise(Base):
     template_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("templates.id"), nullable=False)
     exercise_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("exercises.id"), nullable=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
+    # Default log type for this exercise — overridable per-set
+    log_type: Mapped[str] = mapped_column(String(20), nullable=False, default="strength")
+    # Legacy "uniform across all sets" fields — still used as defaults when adding sets
     target_sets: Mapped[Optional[int]] = mapped_column(Integer)
     target_reps: Mapped[Optional[int]] = mapped_column(Integer)
     target_weight_kg: Mapped[Optional[float]] = mapped_column(Float)
@@ -162,6 +175,44 @@ class TemplateExercise(Base):
 
     template: Mapped[Template] = relationship("Template", back_populates="exercises")
     exercise: Mapped[Exercise] = relationship("Exercise")
+    sets: Mapped[list["TemplateSet"]] = relationship(
+        "TemplateSet",
+        back_populates="template_exercise",
+        cascade="all, delete-orphan",
+        order_by="TemplateSet.set_number",
+    )
+
+
+class TemplateSet(Base):
+    """
+    Per-set targets within a template_exercise. Each set is fully independent
+    and can have its own log_type and metric fields. e.g. set 1 = 5km in 25min,
+    set 2 = 10 laps in 10min, set 3 = strength reps after the cardio cool-down.
+    """
+    __tablename__ = "template_sets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_exercise_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("template_exercises.id", ondelete="CASCADE"), nullable=False
+    )
+    set_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    log_type: Mapped[str] = mapped_column(String(20), nullable=False, default="strength")
+    # Strength
+    target_reps: Mapped[Optional[int]] = mapped_column(Integer)
+    target_weight_kg: Mapped[Optional[float]] = mapped_column(Float)
+    # Cardio (all opt-in via "+ Add field")
+    target_duration_seconds: Mapped[Optional[int]] = mapped_column(Integer)
+    target_distance_m: Mapped[Optional[float]] = mapped_column(Float)
+    target_pace_seconds_per_km: Mapped[Optional[int]] = mapped_column(Integer)
+    target_incline_pct: Mapped[Optional[float]] = mapped_column(Float)
+    target_laps: Mapped[Optional[int]] = mapped_column(Integer)
+    target_avg_heart_rate: Mapped[Optional[int]] = mapped_column(Integer)
+    target_calories: Mapped[Optional[int]] = mapped_column(Integer)
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    template_exercise: Mapped[TemplateExercise] = relationship(
+        "TemplateExercise", back_populates="sets"
+    )
 
 
 # ---------------------------------------------------------------------------
