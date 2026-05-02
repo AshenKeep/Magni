@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
-APP_VERSION = "0.0.9"
+APP_VERSION = "0.0.10"
 
 
 class Settings(BaseSettings):

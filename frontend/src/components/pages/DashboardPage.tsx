@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api } from "@/lib/api";
-import { format } from "date-fns";
+import { format, isToday } from "date-fns";
+import type { WorkoutResponse } from "@/lib/api";
 
 function StatCard({ label, value, accent = "blue", sub }: { label: string; value: string | number; accent?: "blue" | "magenta"; sub?: string }) {
   return (
@@ -19,18 +20,76 @@ function fmtDuration(secs: number | null | undefined): string {
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 
+function TodayWorkoutCard({ workout }: { workout: WorkoutResponse }) {
+  const navigate = useNavigate();
+  const isPlanned = !workout.ended_at && workout.sets.length === 0;
+  const exCount = new Set(workout.sets.map(s => s.exercise_id)).size;
+
+  return (
+    <div className="card border-t-2 border-t-magenta overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-card">
+        <div>
+          <p className="text-xs text-magenta uppercase tracking-wider font-medium">
+            {isPlanned ? "📋 Scheduled for today" : "🏋 Today's workout"}
+          </p>
+          <p className="font-semibold text-primary mt-0.5">{workout.title ?? "Workout"}</p>
+        </div>
+        <button
+          onClick={() => navigate(`/workouts/new?workout_id=${workout.id}`)}
+          className="btn-primary"
+        >
+          {isPlanned ? "▶ Start" : "Continue"}
+        </button>
+      </div>
+      <div className="px-5 py-3">
+        {isPlanned ? (
+          <p className="text-sm text-secondary">
+            {workout.sets.length > 0
+              ? `${workout.sets.length} sets planned · ${exCount} exercise${exCount !== 1 ? "s" : ""}`
+              : "Tap Start to begin logging."}
+          </p>
+        ) : (
+          <p className="text-sm text-secondary">
+            {workout.sets.length} sets logged
+            {exCount > 0 ? ` · ${exCount} exercise${exCount !== 1 ? "s" : ""}` : ""}
+            {workout.duration_seconds ? ` · ${fmtDuration(workout.duration_seconds)}` : " · in progress"}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const { data: dash, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: api.dashboard.get });
   const { data: recent } = useQuery({ queryKey: ["workouts", "recent"], queryFn: () => api.workouts.list({ limit: 5 }) });
+
+  // Query for today's window to find scheduled/in-progress workouts
+  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+  const todayEnd   = new Date(); todayEnd.setHours(23,59,59,999);
+  const { data: todayWorkouts = [] } = useQuery({
+    queryKey: ["workouts-today"],
+    queryFn: () => api.workouts.list({ limit: 10, from_date: todayStart.toISOString(), to_date: todayEnd.toISOString() }),
+  });
+
+  // Show the most relevant today workout — prefer planned, then in-progress
+  const todayWorkout: WorkoutResponse | null = (
+    todayWorkouts.find(w => !w.ended_at && w.sets.length === 0) ??   // planned
+    todayWorkouts.find(w => !w.ended_at && w.sets.length > 0)  ??   // in-progress
+    null
+  );
 
   return (
     <div className="p-8 space-y-8 max-w-5xl">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
         <Link to="/workouts/new" className="btn-primary flex items-center gap-2">
-          <span>+</span> Start workout
+          <span>+</span> New workout
         </Link>
       </div>
+
+      {/* Today's scheduled workout — only shows if one exists */}
+      {todayWorkout && <TodayWorkoutCard workout={todayWorkout} />}
 
       {isLoading ? (
         <div className="text-secondary text-sm">Loading…</div>
@@ -57,25 +116,27 @@ export default function DashboardPage() {
           <div>
             <div className="flex items-center justify-between mb-3">
               <p className="label">Recent workouts</p>
-              <Link to="/workouts" className="text-xs text-blue hover:text-blue-dim transition-colors">View all →</Link>
+              <Link to="/workouts" className="text-xs text-blue hover:text-blue-dim transition-colors">View schedule →</Link>
             </div>
             <div className="space-y-2">
-              {(recent ?? []).map((w) => (
-                <Link key={w.id} to={`/workouts/${w.id}`}
-                  className="card px-5 py-4 flex items-center justify-between hover:border-border/80 hover:bg-card/80 transition-all block">
-                  <div>
-                    <p className="text-sm font-medium text-primary">{w.title ?? "Workout"}</p>
-                    <p className="text-xs text-secondary mt-0.5">
-                      {format(new Date(w.started_at), "EEE d MMM")} · {w.sets.length} sets
-                      {w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}
-                    </p>
-                  </div>
-                  <div className="text-right space-y-0.5">
-                    {w.avg_heart_rate && <p className="text-xs text-magenta">♥ {w.avg_heart_rate} bpm</p>}
-                    {w.calories_burned && <p className="text-xs text-secondary">{w.calories_burned} cal</p>}
-                  </div>
-                </Link>
-              ))}
+              {(recent ?? [])
+                .filter(w => !isToday(new Date(w.started_at)) || w.ended_at)  // don't repeat today's in-progress
+                .map((w) => (
+                  <Link key={w.id} to={`/workouts/${w.id}`}
+                    className="card px-5 py-4 flex items-center justify-between hover:border-border/80 hover:bg-card/80 transition-all block">
+                    <div>
+                      <p className="text-sm font-medium text-primary">{w.title ?? "Workout"}</p>
+                      <p className="text-xs text-secondary mt-0.5">
+                        {format(new Date(w.started_at), "EEE d MMM")} · {w.sets.length} sets
+                        {w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right space-y-0.5">
+                      {w.avg_heart_rate && <p className="text-xs text-magenta">♥ {w.avg_heart_rate} bpm</p>}
+                      {w.calories_burned && <p className="text-xs text-secondary">{w.calories_burned} cal</p>}
+                    </div>
+                  </Link>
+                ))}
               {(recent ?? []).length === 0 && (
                 <div className="card p-8 text-center">
                   <p className="text-secondary text-sm mb-3">No workouts yet</p>

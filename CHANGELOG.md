@@ -5,6 +5,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.10] — 2026-05-02
+
+### Fixed / Changed
+
+#### Schedule page (WorkoutsPage) — complete UX rework
+- **Clicking a day now selects it** (highlights with a blue border) and slides in a panel from the right edge of the screen. Clicking the same day again or the backdrop closes the panel.
+- **The panel shows:**
+  - All workouts scheduled for that day (as tappable cards)
+  - **"📋 Add template to this day"** button → opens a template picker
+  - **"▶ Start blank workout now"** button → creates a workout and opens the logger
+- **Tapping an event card in the panel** opens an event popup (bottom sheet on mobile, centered on desktop) showing: workout name, date, status (Planned/Logged), exercise + set count breakdown, a **"▶ Start workout / Continue"** button, and a **"Remove"** button that deletes the workout from the schedule.
+- **Template picker** shows each template with "Schedule" (just schedules it as a planned workout for that date, stays on calendar) and, for today only, "▶ Start now" (creates and immediately navigates to the logger).
+- WorkoutPill components in week/month grid cells are now `<button>` (not `<Link>`) — clicking them selects the day and opens the panel rather than navigating directly to the detail page.
+
+#### Dashboard — "Today's workout" section
+- A card now appears at the top of the dashboard **only when there is a planned or in-progress workout for today**. Absent a scheduled workout, the section is completely hidden.
+- The card shows: workout title, status, set count, exercise count, and a **"▶ Start" / "Continue"** button.
+- "Recent workouts" list filters out today's in-progress workouts to avoid duplication.
+
+---
+
 ## [0.0.9] — 2026-05-01
 
 ### Added

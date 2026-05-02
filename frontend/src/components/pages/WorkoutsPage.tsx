@@ -6,12 +6,12 @@ import {
   addDays, addWeeks, addMonths, subWeeks, subMonths,
   isSameDay, isSameMonth, isToday,
 } from "date-fns";
-import { api, type WorkoutResponse, type TemplateResponse } from "@/lib/api";
+import { api, type WorkoutResponse } from "@/lib/api";
 
 type ViewMode = "day" | "week" | "month";
 
 const STORAGE_KEY = "magni:workouts:viewmode";
-const DATE_KEY = "magni:workouts:cursor";
+const DATE_KEY    = "magni:workouts:cursor";
 
 function fmtDuration(secs: number | null | undefined): string {
   if (!secs) return "";
@@ -19,236 +19,407 @@ function fmtDuration(secs: number | null | undefined): string {
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 
-function workoutDate(w: WorkoutResponse): Date {
-  return new Date(w.started_at);
-}
+function workoutDate(w: WorkoutResponse): Date { return new Date(w.started_at); }
 
-// ---------- Schedule modal ----------
+function isPlanned(w: WorkoutResponse) { return !w.ended_at && w.sets.length === 0; }
 
-function ScheduleModal({
-  date, onClose,
-}: { date: Date; onClose: () => void }) {
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const { data: templates = [] } = useQuery({ queryKey: ["templates"], queryFn: api.templates.list });
-  const [error, setError] = useState("");
+// ---------------------------------------------------------------------------
+// Event popup — shown when user taps a workout pill
+// ---------------------------------------------------------------------------
 
-  const isTodayDate = isToday(date);
-
-  // "Schedule" = create a planned workout on `date` with sets pre-filled but
-  // no ended_at. Doesn't navigate — user stays on the calendar.
-  const scheduleFromTemplate = useMutation({
-    mutationFn: async (templateId: string) => {
-      const r = await api.templates.startWorkout(templateId);
-      // Move the created workout to the chosen date (it was created with now())
-      await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
-      return r;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["workouts"] });
-      onClose();
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  // "Start now" = same flow as before — navigate into the logger
-  const startNowFromTemplate = useMutation({
-    mutationFn: async (templateId: string) => {
-      const r = await api.templates.startWorkout(templateId);
-      await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
-      return r;
-    },
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ["workouts"] });
-      navigate(`/workouts/new?workout_id=${r.workout_id}`);
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  const startBlank = useMutation({
-    mutationFn: () => api.workouts.create({
-      title: `Workout ${format(date, "d MMM")}`,
-      started_at: date.toISOString(),
-    }),
-    onSuccess: (w) => {
-      qc.invalidateQueries({ queryKey: ["workouts"] });
-      navigate(`/workouts/new?workout_id=${w.id}`);
-    },
-    onError: (e: Error) => setError(e.message),
-  });
+function EventPopup({
+  workout,
+  exercises,
+  onClose,
+  onStart,
+  onRemove,
+}: {
+  workout: WorkoutResponse;
+  exercises: Record<string, string>;
+  onClose: () => void;
+  onStart: () => void;
+  onRemove: () => void;
+}) {
+  const planned = isPlanned(workout);
+  // Group sets by exercise
+  const byExercise: Record<string, number> = {};
+  const order: string[] = [];
+  for (const s of workout.sets) {
+    if (!byExercise[s.exercise_id]) { byExercise[s.exercise_id] = 0; order.push(s.exercise_id); }
+    byExercise[s.exercise_id]++;
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-      <div className="bg-surface border border-border rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col">
-        <div className="p-5 border-b border-border flex items-center justify-between">
-          <h3 className="font-medium text-primary">Add to {format(date, "EEEE d MMM")}</h3>
-          <button onClick={onClose} className="text-secondary hover:text-primary text-xl">×</button>
-        </div>
-        <div className="p-5 space-y-4 overflow-y-auto">
-          {error && (
-            <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">{error}</div>
-          )}
-
-          {isTodayDate && (
-            <button
-              onClick={() => startBlank.mutate()}
-              disabled={startBlank.isPending}
-              className="btn-primary w-full"
-            >
-              {startBlank.isPending ? "Starting…" : "▶ Start blank workout now"}
-            </button>
-          )}
-
-          <div className="text-xs text-secondary uppercase tracking-wider">
-            {isTodayDate ? "Or pick a template" : "Schedule a template"}
-          </div>
-          {templates.length === 0 ? (
-            <p className="text-secondary text-sm">No templates yet. <Link to="/templates" className="text-blue hover:underline">Create one</Link>.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {templates.map((t) => (
-                <div key={t.id} className="bg-card border border-border rounded-lg p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-primary truncate">{t.name}</p>
-                      <p className="text-xs text-secondary">{t.exercises.length} exercise{t.exercises.length !== 1 ? "s" : ""}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => scheduleFromTemplate.mutate(t.id)}
-                      disabled={scheduleFromTemplate.isPending || t.exercises.length === 0}
-                      className="btn-secondary text-xs flex-1 disabled:opacity-50"
-                    >
-                      Schedule
-                    </button>
-                    {isTodayDate && (
-                      <button
-                        onClick={() => startNowFromTemplate.mutate(t.id)}
-                        disabled={startNowFromTemplate.isPending || t.exercises.length === 0}
-                        className="btn-primary text-xs flex-1 disabled:opacity-50"
-                      >
-                        ▶ Start now
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!isTodayDate && (
-            <p className="text-xs text-secondary border-t border-border pt-3">
-              Selected day is not today. The template will be scheduled as planned —
-              tap it on the calendar later to start logging.
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-md p-5 space-y-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <p className="font-semibold text-primary">{workout.title ?? "Workout"}</p>
+            <p className="text-xs text-secondary mt-0.5">
+              {format(workoutDate(workout), "EEEE d MMM")}
+              {workout.duration_seconds ? ` · ${fmtDuration(workout.duration_seconds)}` : ""}
             </p>
-          )}
+          </div>
+          <span className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded shrink-0 ${
+            planned ? "bg-magenta-glow text-magenta" : "bg-blue-glow text-blue"
+          }`}>
+            {planned ? "Planned" : "Logged"}
+          </span>
+        </div>
+
+        {order.length > 0 ? (
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            {order.map(exId => (
+              <div key={exId} className="flex items-center justify-between text-xs">
+                <span className="text-secondary">{exercises[exId] ?? "Unknown"}</span>
+                <span className="text-primary">{byExercise[exId]} set{byExercise[exId] !== 1 ? "s" : ""}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-secondary italic">No sets logged yet — waiting to be started.</p>
+        )}
+
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onStart}
+            className="btn-primary flex-1"
+          >
+            {planned ? "▶ Start workout" : "View / continue"}
+          </button>
+          <button
+            onClick={onRemove}
+            className="btn-danger text-sm px-4"
+          >
+            Remove
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ---------- Workout strip (compact list of workouts for a single day) ----------
+// ---------------------------------------------------------------------------
+// Day action panel — shown when user selects a day
+// ---------------------------------------------------------------------------
 
-function WorkoutPill({ w }: { w: WorkoutResponse }) {
-  const isPlanned = !w.ended_at && w.sets.length === 0;
+function DayPanel({
+  date,
+  workouts,
+  exercises,
+  onAddTemplate,
+  onAddBlank,
+  onClose,
+}: {
+  date: Date;
+  workouts: WorkoutResponse[];
+  exercises: Record<string, string>;
+  onAddTemplate: () => void;
+  onAddBlank: () => void;
+  onClose: () => void;
+}) {
+  const [eventPopup, setEventPopup] = useState<WorkoutResponse | null>(null);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => api.workouts.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+      setEventPopup(null);
+    },
+  });
+
   return (
-    <Link
-      to={`/workouts/${w.id}`}
-      className={`block text-xs px-2 py-1 rounded mb-0.5 truncate transition-colors ${
-        isPlanned
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-30 bg-black/40"
+        onClick={onClose}
+      />
+      {/* Slide-in panel from right */}
+      <div className="fixed top-0 right-0 z-40 h-full w-full max-w-sm bg-surface border-l border-border flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <p className="font-semibold text-primary">{format(date, "EEEE d MMMM")}</p>
+            {isToday(date) && <p className="text-xs text-blue">Today</p>}
+          </div>
+          <button onClick={onClose} className="text-secondary hover:text-primary text-xl leading-none">×</button>
+        </div>
+
+        {/* Events */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-2">
+          {workouts.length === 0 ? (
+            <p className="text-secondary text-sm">No workouts scheduled for this day.</p>
+          ) : (
+            workouts.map(w => {
+              const planned = isPlanned(w);
+              const exCount = new Set(w.sets.map(s => s.exercise_id)).size;
+              return (
+                <button
+                  key={w.id}
+                  onClick={() => setEventPopup(w)}
+                  className="w-full text-left bg-card border border-border hover:border-blue rounded-xl px-4 py-3 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-primary truncate">{w.title ?? "Workout"}</p>
+                      <p className="text-xs text-secondary mt-0.5">
+                        {planned
+                          ? "Tap to start"
+                          : `${w.sets.length} sets${exCount > 1 ? ` · ${exCount} exercises` : ""}${w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}`
+                        }
+                      </p>
+                    </div>
+                    <span className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded shrink-0 ${
+                      planned ? "bg-magenta-glow text-magenta" : "bg-blue-glow text-blue"
+                    }`}>
+                      {planned ? "Planned" : "Logged"}
+                    </span>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="p-5 border-t border-border space-y-2">
+          <button
+            onClick={onAddTemplate}
+            className="btn-primary w-full"
+          >
+            📋 Add template to this day
+          </button>
+          <button
+            onClick={onAddBlank}
+            className="btn-secondary w-full"
+          >
+            ▶ Start blank workout now
+          </button>
+        </div>
+      </div>
+
+      {/* Event popup */}
+      {eventPopup && (
+        <EventPopup
+          workout={eventPopup}
+          exercises={exercises}
+          onClose={() => setEventPopup(null)}
+          onStart={() => {
+            setEventPopup(null);
+            onClose();
+            navigate(`/workouts/new?workout_id=${eventPopup.id}`);
+          }}
+          onRemove={() => {
+            if (confirm(`Remove "${eventPopup.title ?? "this workout"}" from the schedule?`)) {
+              deleteMut.mutate(eventPopup.id);
+            }
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Template picker modal — opened from the DayPanel
+// ---------------------------------------------------------------------------
+
+function TemplatePicker({
+  date,
+  onClose,
+}: { date: Date; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data: templates = [] } = useQuery({ queryKey: ["templates"], queryFn: api.templates.list });
+  const [error, setError] = useState("");
+  const isTodayDate = isToday(date);
+
+  const schedule = useMutation({
+    mutationFn: async (templateId: string) => {
+      const r = await api.templates.startWorkout(templateId);
+      await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
+      return r.workout_id;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+      qc.invalidateQueries({ queryKey: ["workouts-today"] });
+      onClose();
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[70vh] flex flex-col">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <p className="font-medium text-primary">Add template — {format(date, "d MMM")}</p>
+          <button onClick={onClose} className="text-secondary hover:text-primary text-xl">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-2">
+          {error && <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">{error}</div>}
+          {templates.length === 0 && (
+            <p className="text-secondary text-sm">No templates yet. <Link to="/templates" className="text-blue hover:underline">Create one</Link>.</p>
+          )}
+          {templates.map(t => (
+            <div key={t.id} className="bg-card border border-border rounded-xl p-4 space-y-3">
+              <div>
+                <p className="text-sm font-medium text-primary">{t.name}</p>
+                <p className="text-xs text-secondary">{t.exercises.length} exercise{t.exercises.length !== 1 ? "s" : ""}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => schedule.mutate(t.id)}
+                  disabled={schedule.isPending || t.exercises.length === 0}
+                  className="btn-secondary text-xs flex-1 disabled:opacity-50"
+                >
+                  📅 Schedule
+                </button>
+                {isTodayDate && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const r = await api.templates.startWorkout(t.id);
+                        await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
+                        qc.invalidateQueries({ queryKey: ["workouts"] });
+                        qc.invalidateQueries({ queryKey: ["workouts-today"] });
+                        onClose();
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Failed");
+                      }
+                    }}
+                    disabled={t.exercises.length === 0}
+                    className="btn-primary text-xs flex-1 disabled:opacity-50"
+                  >
+                    ▶ Start now
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shared: small workout pill for week/month grid cells
+// ---------------------------------------------------------------------------
+
+function WorkoutPill({ w, onClick }: { w: WorkoutResponse; onClick: (e: React.MouseEvent) => void }) {
+  const planned = isPlanned(w);
+  return (
+    <button
+      onClick={onClick}
+      className={`block w-full text-left text-[10px] px-1.5 py-0.5 rounded mb-0.5 truncate transition-colors ${
+        planned
           ? "bg-magenta-glow text-magenta hover:bg-magenta/20"
           : "bg-blue-glow text-blue hover:bg-blue/20"
       }`}
     >
       {w.title ?? "Workout"}
       {w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}
-    </Link>
+    </button>
   );
 }
 
-// ---------- Day view ----------
+// ---------------------------------------------------------------------------
+// Views
+// ---------------------------------------------------------------------------
 
-function DayView({
-  cursor, workouts, onAdd,
-}: { cursor: Date; workouts: WorkoutResponse[]; onAdd: (d: Date) => void }) {
+function DayViewGrid({
+  cursor,
+  workouts,
+  selectedDate,
+  onSelectDate,
+}: {
+  cursor: Date;
+  workouts: WorkoutResponse[];
+  selectedDate: Date | null;
+  onSelectDate: (d: Date) => void;
+}) {
   const dayWorkouts = workouts.filter(w => isSameDay(workoutDate(w), cursor));
+  const selected = selectedDate && isSameDay(cursor, selectedDate);
   return (
-    <div className="card p-6 space-y-4">
-      <div className="flex items-baseline justify-between">
+    <div
+      onClick={() => onSelectDate(cursor)}
+      className={`card p-6 cursor-pointer transition-colors hover:border-blue ${selected ? "border-blue" : ""}`}
+    >
+      <div className="flex items-baseline justify-between mb-4">
         <div>
           <p className="text-xs text-secondary uppercase tracking-wider">{format(cursor, "EEEE")}</p>
           <h2 className="text-2xl font-bold text-primary">{format(cursor, "d MMMM yyyy")}</h2>
         </div>
         {isToday(cursor) && <span className="text-xs text-blue">Today</span>}
       </div>
-
       {dayWorkouts.length === 0 ? (
-        <div className="text-center py-10 border border-dashed border-border rounded-xl">
-          <p className="text-secondary text-sm mb-4">Nothing scheduled for this day</p>
-          <button onClick={() => onAdd(cursor)} className="btn-primary">+ Add workout</button>
-        </div>
+        <p className="text-secondary text-sm">No workouts — tap to add one.</p>
       ) : (
-        <>
-          <div className="space-y-2">
-            {dayWorkouts.map(w => {
-              const isPlanned = !w.ended_at && w.sets.length === 0;
-              return (
-                <Link
-                  key={w.id}
-                  to={`/workouts/${w.id}`}
-                  className="card border block px-4 py-3 hover:bg-card/80 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-primary">{w.title ?? "Workout"}</p>
-                      <p className="text-xs text-secondary mt-0.5">
-                        {isPlanned ? "Scheduled · not yet started" : `${w.sets.length} sets${w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}`}
-                      </p>
-                    </div>
-                    <span className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded ${
-                      isPlanned ? "bg-magenta-glow text-magenta" : "bg-blue-glow text-blue"
-                    }`}>
-                      {isPlanned ? "Planned" : "Logged"}
-                    </span>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-          <button onClick={() => onAdd(cursor)} className="text-sm text-blue hover:underline">+ Add another</button>
-        </>
+        <div className="space-y-2">
+          {dayWorkouts.map(w => {
+            const planned = isPlanned(w);
+            return (
+              <div key={w.id} className={`bg-card border rounded-lg px-4 py-3 flex items-center justify-between ${
+                planned ? "border-magenta/30" : "border-blue/30"
+              }`}>
+                <div>
+                  <p className="text-sm font-medium text-primary">{w.title ?? "Workout"}</p>
+                  <p className="text-xs text-secondary">{planned ? "Planned" : `${w.sets.length} sets`}</p>
+                </div>
+                <span className={`text-[10px] uppercase tracking-wider px-2 py-1 rounded ${
+                  planned ? "bg-magenta-glow text-magenta" : "bg-blue-glow text-blue"
+                }`}>{planned ? "Planned" : "Logged"}</span>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
 }
 
-// ---------- Week view ----------
-
 function WeekView({
-  cursor, workouts, onAdd,
-}: { cursor: Date; workouts: WorkoutResponse[]; onAdd: (d: Date) => void }) {
+  cursor, workouts, selectedDate, onSelectDate,
+}: {
+  cursor: Date;
+  workouts: WorkoutResponse[];
+  selectedDate: Date | null;
+  onSelectDate: (d: Date) => void;
+}) {
   const start = startOfWeek(cursor, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   return (
     <div className="grid grid-cols-7 gap-2">
       {days.map(d => {
         const dayWorkouts = workouts.filter(w => isSameDay(workoutDate(w), d));
+        const selected = selectedDate && isSameDay(d, selectedDate);
         return (
           <div
             key={d.toISOString()}
-            className={`card p-3 min-h-[150px] flex flex-col ${isToday(d) ? "border-blue" : ""}`}
+            onClick={() => onSelectDate(d)}
+            className={`card p-3 min-h-[140px] flex flex-col cursor-pointer transition-colors hover:border-blue/50 ${
+              isToday(d) ? "border-blue" : ""
+            } ${selected ? "border-blue bg-blue-glow/20" : ""}`}
           >
             <div className="text-[10px] text-secondary uppercase tracking-wider">{format(d, "EEE")}</div>
-            <div className={`text-lg font-semibold ${isToday(d) ? "text-blue" : "text-primary"}`}>{format(d, "d")}</div>
-            <div className="flex-1 mt-2 overflow-y-auto">
-              {dayWorkouts.map(w => <WorkoutPill key={w.id} w={w} />)}
+            <div className={`text-lg font-semibold mb-2 ${isToday(d) ? "text-blue" : "text-primary"}`}>{format(d, "d")}</div>
+            <div className="flex-1 overflow-y-auto">
+              {dayWorkouts.map(w => (
+                <WorkoutPill
+                  key={w.id}
+                  w={w}
+                  onClick={e => { e.stopPropagation(); onSelectDate(d); }}
+                />
+              ))}
             </div>
-            <button
-              onClick={() => onAdd(d)}
-              className="mt-2 text-[10px] text-secondary hover:text-blue"
-            >+ add</button>
           </div>
         );
       })}
@@ -256,11 +427,14 @@ function WeekView({
   );
 }
 
-// ---------- Month view ----------
-
 function MonthView({
-  cursor, workouts, onAdd,
-}: { cursor: Date; workouts: WorkoutResponse[]; onAdd: (d: Date) => void }) {
+  cursor, workouts, selectedDate, onSelectDate,
+}: {
+  cursor: Date;
+  workouts: WorkoutResponse[];
+  selectedDate: Date | null;
+  onSelectDate: (d: Date) => void;
+}) {
   const monthStart = startOfMonth(cursor);
   const monthEnd = endOfMonth(cursor);
   const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
@@ -279,22 +453,31 @@ function MonthView({
         {days.map(d => {
           const dayWorkouts = workouts.filter(w => isSameDay(workoutDate(w), d));
           const inMonth = isSameMonth(d, cursor);
+          const selected = selectedDate && isSameDay(d, selectedDate);
           return (
-            <button
+            <div
               key={d.toISOString()}
-              onClick={() => onAdd(d)}
-              className={`text-left card p-2 min-h-[90px] flex flex-col transition-colors ${
-                inMonth ? "" : "opacity-40"
-              } ${isToday(d) ? "border-blue" : ""} hover:border-blue/50`}
+              onClick={() => onSelectDate(d)}
+              className={`card p-2 min-h-[80px] flex flex-col cursor-pointer transition-colors ${
+                !inMonth ? "opacity-40" : ""
+              } ${isToday(d) ? "border-blue" : ""} ${
+                selected ? "border-blue bg-blue-glow/20" : "hover:border-blue/40"
+              }`}
             >
-              <div className={`text-sm font-medium ${isToday(d) ? "text-blue" : "text-primary"}`}>{format(d, "d")}</div>
-              <div className="flex-1 mt-1 overflow-hidden">
-                {dayWorkouts.slice(0, 2).map(w => <WorkoutPill key={w.id} w={w} />)}
+              <div className={`text-xs font-medium mb-1 ${isToday(d) ? "text-blue" : "text-primary"}`}>{format(d, "d")}</div>
+              <div className="flex-1 overflow-hidden">
+                {dayWorkouts.slice(0, 2).map(w => (
+                  <WorkoutPill
+                    key={w.id}
+                    w={w}
+                    onClick={e => { e.stopPropagation(); onSelectDate(d); }}
+                  />
+                ))}
                 {dayWorkouts.length > 2 && (
                   <div className="text-[10px] text-secondary">+{dayWorkouts.length - 2} more</div>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -302,56 +485,63 @@ function MonthView({
   );
 }
 
-// ---------- Page ----------
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function WorkoutsPage() {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
   const [mode, setMode] = useState<ViewMode>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return (stored === "day" || stored === "week" || stored === "month") ? stored : "week";
+    const s = localStorage.getItem(STORAGE_KEY);
+    return (s === "day" || s === "week" || s === "month") ? s : "week";
   });
   const [cursor, setCursor] = useState<Date>(() => {
-    const stored = localStorage.getItem(DATE_KEY);
-    if (stored) {
-      const d = new Date(stored);
-      if (!isNaN(d.getTime())) return d;
-    }
+    const s = localStorage.getItem(DATE_KEY);
+    if (s) { const d = new Date(s); if (!isNaN(d.getTime())) return d; }
     return new Date();
   });
-  const [scheduleDate, setScheduleDate] = useState<Date | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
-  // Persist mode + cursor across sessions
   useEffect(() => { localStorage.setItem(STORAGE_KEY, mode); }, [mode]);
   useEffect(() => { localStorage.setItem(DATE_KEY, cursor.toISOString()); }, [cursor]);
 
-  // Compute date window we need to load
   const range = useMemo(() => {
     if (mode === "day") {
-      const start = new Date(cursor); start.setHours(0,0,0,0);
-      const end = new Date(cursor); end.setHours(23,59,59,999);
-      return { from: start, to: end };
+      const s = new Date(cursor); s.setHours(0,0,0,0);
+      const e = new Date(cursor); e.setHours(23,59,59,999);
+      return { from: s, to: e };
     }
     if (mode === "week") {
-      return {
-        from: startOfWeek(cursor, { weekStartsOn: 1 }),
-        to: endOfWeek(cursor, { weekStartsOn: 1 }),
-      };
+      return { from: startOfWeek(cursor, { weekStartsOn: 1 }), to: endOfWeek(cursor, { weekStartsOn: 1 }) };
     }
-    // Month view actually shows surrounding weeks too, so widen
-    const monthStart = startOfMonth(cursor);
-    const monthEnd = endOfMonth(cursor);
     return {
-      from: startOfWeek(monthStart, { weekStartsOn: 1 }),
-      to: endOfWeek(monthEnd, { weekStartsOn: 1 }),
+      from: startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 }),
+      to: endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 }),
     };
   }, [mode, cursor]);
 
   const { data: workouts = [], isLoading } = useQuery({
     queryKey: ["workouts", range.from.toISOString(), range.to.toISOString()],
-    queryFn: () => api.workouts.list({
-      limit: 200,
-      from_date: range.from.toISOString(),
-      to_date: range.to.toISOString(),
+    queryFn: () => api.workouts.list({ limit: 200, from_date: range.from.toISOString(), to_date: range.to.toISOString() }),
+  });
+
+  const { data: exercises = [] } = useQuery({ queryKey: ["exercises"], queryFn: api.exercises.list });
+  const exerciseMap = useMemo(() =>
+    exercises.reduce((acc, e) => { acc[e.id] = e.name; return acc; }, {} as Record<string, string>)
+  , [exercises]);
+
+  const addBlankMut = useMutation({
+    mutationFn: (d: Date) => api.workouts.create({
+      title: `Workout ${format(d, "d MMM")}`,
+      started_at: d.toISOString(),
     }),
+    onSuccess: (w) => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+      navigate(`/workouts/new?workout_id=${w.id}`);
+    },
   });
 
   const goPrev = () => {
@@ -366,12 +556,23 @@ export default function WorkoutsPage() {
   };
 
   const headerLabel =
-    mode === "day"   ? format(cursor, "EEEE d MMMM yyyy") :
-    mode === "week"  ? `Week of ${format(startOfWeek(cursor, { weekStartsOn: 1 }), "d MMM")}` :
-                       format(cursor, "MMMM yyyy");
+    mode === "day"  ? format(cursor, "EEEE d MMMM yyyy") :
+    mode === "week" ? `Week of ${format(startOfWeek(cursor, { weekStartsOn: 1 }), "d MMM")}` :
+                     format(cursor, "MMMM yyyy");
+
+  const selectedDayWorkouts = useMemo(() =>
+    selectedDate ? workouts.filter(w => isSameDay(workoutDate(w), selectedDate)) : []
+  , [selectedDate, workouts]);
+
+  const onSelectDate = (d: Date) => {
+    // If same day re-selected, close the panel
+    setSelectedDate(prev => (prev && isSameDay(prev, d)) ? null : d);
+    setShowTemplatePicker(false);
+  };
 
   return (
     <div className="p-8 space-y-6 max-w-6xl">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold text-primary">Schedule</h1>
         <div className="flex gap-2 items-center">
@@ -386,10 +587,10 @@ export default function WorkoutsPage() {
               </button>
             ))}
           </div>
-          <Link to="/workouts/new" className="btn-primary text-sm">+ New workout</Link>
         </div>
       </div>
 
+      {/* Nav */}
       <div className="flex items-center gap-3">
         <button onClick={goPrev} className="btn-secondary text-sm">←</button>
         <button onClick={() => setCursor(new Date())} className="btn-secondary text-sm">Today</button>
@@ -399,25 +600,38 @@ export default function WorkoutsPage() {
 
       {isLoading && <div className="text-secondary text-sm">Loading…</div>}
 
+      {/* Calendar grid */}
       {!isLoading && mode === "day" && (
-        <DayView cursor={cursor} workouts={workouts} onAdd={setScheduleDate} />
+        <DayViewGrid cursor={cursor} workouts={workouts} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       )}
       {!isLoading && mode === "week" && (
-        <WeekView cursor={cursor} workouts={workouts} onAdd={setScheduleDate} />
+        <WeekView cursor={cursor} workouts={workouts} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       )}
       {!isLoading && mode === "month" && (
-        <MonthView cursor={cursor} workouts={workouts} onAdd={setScheduleDate} />
+        <MonthView cursor={cursor} workouts={workouts} selectedDate={selectedDate} onSelectDate={onSelectDate} />
       )}
 
-      {scheduleDate && (
-        <ScheduleModal
-          date={scheduleDate}
-          onClose={() => setScheduleDate(null)}
+      {/* Day panel — slides in from right when a day is selected */}
+      {selectedDate && (
+        <DayPanel
+          date={selectedDate}
+          workouts={selectedDayWorkouts}
+          exercises={exerciseMap}
+          onAddTemplate={() => setShowTemplatePicker(true)}
+          onAddBlank={() => {
+            if (selectedDate) addBlankMut.mutate(selectedDate);
+          }}
+          onClose={() => { setSelectedDate(null); setShowTemplatePicker(false); }}
+        />
+      )}
+
+      {/* Template picker */}
+      {showTemplatePicker && selectedDate && (
+        <TemplatePicker
+          date={selectedDate}
+          onClose={() => setShowTemplatePicker(false)}
         />
       )}
     </div>
   );
 }
-
-// Re-export so TemplateResponse stays referenced (helps tree-shaking checks)
-export type { TemplateResponse };
