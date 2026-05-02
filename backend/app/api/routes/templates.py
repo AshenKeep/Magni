@@ -269,7 +269,18 @@ async def start_workout_from_template(
 
     for te in sorted(t.exercises, key=lambda x: x.order):
         if te.sets:
-            for ts in sorted(te.sets, key=lambda s: s.set_number):
+            for idx, ts in enumerate(sorted(te.sets, key=lambda s: s.set_number)):
+                # The exercise-level note (e.g. "2 min rest between sets") is
+                # only stored once on TemplateExercise — copy it onto the first
+                # set's notes so the logger surfaces it. Per-set notes follow
+                # on the same line if both are present.
+                set_note_parts = []
+                if idx == 0 and te.notes:
+                    set_note_parts.append(te.notes)
+                if ts.notes:
+                    set_note_parts.append(ts.notes)
+                combined_notes = " | ".join(set_note_parts) if set_note_parts else None
+
                 db.add(WorkoutSet(
                     workout_id=workout.id,
                     exercise_id=te.exercise_id,
@@ -284,7 +295,7 @@ async def start_workout_from_template(
                     laps=ts.target_laps,
                     avg_heart_rate=ts.target_avg_heart_rate,
                     calories=ts.target_calories,
-                    notes=ts.notes,
+                    notes=combined_notes,
                 ))
         else:
             for n in range(1, (te.target_sets or 1) + 1):

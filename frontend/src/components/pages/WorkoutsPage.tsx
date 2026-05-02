@@ -33,6 +33,38 @@ function ScheduleModal({
   const { data: templates = [] } = useQuery({ queryKey: ["templates"], queryFn: api.templates.list });
   const [error, setError] = useState("");
 
+  const isTodayDate = isToday(date);
+
+  // "Schedule" = create a planned workout on `date` with sets pre-filled but
+  // no ended_at. Doesn't navigate — user stays on the calendar.
+  const scheduleFromTemplate = useMutation({
+    mutationFn: async (templateId: string) => {
+      const r = await api.templates.startWorkout(templateId);
+      // Move the created workout to the chosen date (it was created with now())
+      await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
+      return r;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+      onClose();
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  // "Start now" = same flow as before — navigate into the logger
+  const startNowFromTemplate = useMutation({
+    mutationFn: async (templateId: string) => {
+      const r = await api.templates.startWorkout(templateId);
+      await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
+      return r;
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ["workouts"] });
+      navigate(`/workouts/new?workout_id=${r.workout_id}`);
+    },
+    onError: (e: Error) => setError(e.message),
+  });
+
   const startBlank = useMutation({
     mutationFn: () => api.workouts.create({
       title: `Workout ${format(date, "d MMM")}`,
@@ -41,20 +73,6 @@ function ScheduleModal({
     onSuccess: (w) => {
       qc.invalidateQueries({ queryKey: ["workouts"] });
       navigate(`/workouts/new?workout_id=${w.id}`);
-    },
-    onError: (e: Error) => setError(e.message),
-  });
-
-  const startFromTemplate = useMutation({
-    mutationFn: async (templateId: string) => {
-      const r = await api.templates.startWorkout(templateId);
-      // Patch the started_at to the chosen date
-      await api.workouts.update(r.workout_id, { started_at: date.toISOString() });
-      return r;
-    },
-    onSuccess: (r) => {
-      qc.invalidateQueries({ queryKey: ["workouts"] });
-      navigate(`/workouts/new?workout_id=${r.workout_id}`);
     },
     onError: (e: Error) => setError(e.message),
   });
@@ -70,30 +88,60 @@ function ScheduleModal({
           {error && (
             <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-3">{error}</div>
           )}
-          <button
-            onClick={() => startBlank.mutate()}
-            disabled={startBlank.isPending}
-            className="btn-primary w-full"
-          >
-            {startBlank.isPending ? "Starting…" : "▶ Start blank workout"}
-          </button>
-          <div className="text-xs text-secondary uppercase tracking-wider">Or pick a template</div>
+
+          {isTodayDate && (
+            <button
+              onClick={() => startBlank.mutate()}
+              disabled={startBlank.isPending}
+              className="btn-primary w-full"
+            >
+              {startBlank.isPending ? "Starting…" : "▶ Start blank workout now"}
+            </button>
+          )}
+
+          <div className="text-xs text-secondary uppercase tracking-wider">
+            {isTodayDate ? "Or pick a template" : "Schedule a template"}
+          </div>
           {templates.length === 0 ? (
             <p className="text-secondary text-sm">No templates yet. <Link to="/templates" className="text-blue hover:underline">Create one</Link>.</p>
           ) : (
             <div className="space-y-1.5">
               {templates.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => startFromTemplate.mutate(t.id)}
-                  disabled={startFromTemplate.isPending}
-                  className="w-full text-left bg-card border border-border hover:border-blue rounded-lg px-4 py-3 transition-colors disabled:opacity-50"
-                >
-                  <p className="text-sm text-primary">{t.name}</p>
-                  <p className="text-xs text-secondary">{t.exercises.length} exercise{t.exercises.length !== 1 ? "s" : ""}</p>
-                </button>
+                <div key={t.id} className="bg-card border border-border rounded-lg p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-primary truncate">{t.name}</p>
+                      <p className="text-xs text-secondary">{t.exercises.length} exercise{t.exercises.length !== 1 ? "s" : ""}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => scheduleFromTemplate.mutate(t.id)}
+                      disabled={scheduleFromTemplate.isPending || t.exercises.length === 0}
+                      className="btn-secondary text-xs flex-1 disabled:opacity-50"
+                    >
+                      Schedule
+                    </button>
+                    {isTodayDate && (
+                      <button
+                        onClick={() => startNowFromTemplate.mutate(t.id)}
+                        disabled={startNowFromTemplate.isPending || t.exercises.length === 0}
+                        className="btn-primary text-xs flex-1 disabled:opacity-50"
+                      >
+                        ▶ Start now
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
+          )}
+
+          {!isTodayDate && (
+            <p className="text-xs text-secondary border-t border-border pt-3">
+              Selected day is not today. The template will be scheduled as planned —
+              tap it on the calendar later to start logging.
+            </p>
           )}
         </div>
       </div>

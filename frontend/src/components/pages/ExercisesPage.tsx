@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ExerciseResponse } from "@/lib/api";
 import { parseMuscleGroups, exerciseMatchesMuscle, exerciseMatchesSearch, MUSCLE_CATEGORIES } from "@/lib/muscleGroups";
@@ -96,6 +96,7 @@ function ExerciseFormModal({ exercise, onClose }: { exercise?: ExerciseResponse;
   const [instructions, setInstructions] = useState(exercise?.instructions ?? "");
   const [gifUrl, setGifUrl] = useState(exercise?.gif_url ?? "");
   const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const save = useMutation({
     mutationFn: () => exercise
@@ -104,6 +105,23 @@ function ExerciseFormModal({ exercise, onClose }: { exercise?: ExerciseResponse;
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["exercises"] }); onClose(); },
     onError: (e: Error) => setError(e.message),
   });
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !exercise) return;
+    setError("");
+    setUploading(true);
+    try {
+      const updated = await api.exercises.uploadImage(exercise.id, file);
+      setGifUrl(updated.gif_url ?? "");
+      qc.invalidateQueries({ queryKey: ["exercises"] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";  // allow re-uploading same file
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
@@ -132,10 +150,42 @@ function ExerciseFormModal({ exercise, onClose }: { exercise?: ExerciseResponse;
               {EQUIPMENT.map(e => <option key={e} value={e}>{e}</option>)}
             </select>
           </div>
+
+          {/* Image: upload (existing exercise) OR URL */}
           <div>
-            <label className="label">GIF / Image URL <span className="text-secondary normal-case">(optional)</span></label>
-            <input value={gifUrl} onChange={(e) => setGifUrl(e.target.value)} className="input" placeholder="https://…" />
+            <label className="label">Image / GIF</label>
+            {gifUrl && (
+              <img
+                src={gifUrl}
+                alt="preview"
+                className="w-32 h-32 object-cover rounded-lg bg-card border border-border mb-2"
+              />
+            )}
+            {exercise ? (
+              <div className="space-y-2">
+                <label className="btn-secondary text-sm w-full text-center cursor-pointer block">
+                  {uploading ? "Uploading…" : "📷 Upload image (PNG/JPG/GIF/WEBP, max 5 MB)"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    onChange={handleFileChange}
+                    disabled={uploading}
+                    className="hidden"
+                  />
+                </label>
+                <p className="text-xs text-secondary">Or paste a URL:</p>
+                <input value={gifUrl} onChange={(e) => setGifUrl(e.target.value)} className="input" placeholder="https://…" />
+              </div>
+            ) : (
+              <>
+                <input value={gifUrl} onChange={(e) => setGifUrl(e.target.value)} className="input" placeholder="https://…" />
+                <p className="text-xs text-secondary mt-1">
+                  Save the exercise first, then re-open it to upload an image file.
+                </p>
+              </>
+            )}
           </div>
+
           <div>
             <label className="label">Instructions <span className="text-secondary normal-case">(one step per line)</span></label>
             <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} className="input resize-none h-28" placeholder="1. Lie on the bench...&#10;2. Grip the bar..." />

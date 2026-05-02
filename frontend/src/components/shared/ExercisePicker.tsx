@@ -31,11 +31,12 @@ interface SetDraft {
   log_type: LogType;
   enabled: MetricField[];
   values: Partial<Record<MetricField, number | null>>;
+  notes: string;
 }
 
 function emptySet(num: number, logType: LogType): SetDraft {
   const enabled = defaultFieldsFor(logType);
-  return { set_number: num, log_type: logType, enabled, values: {} };
+  return { set_number: num, log_type: logType, enabled, values: {}, notes: "" };
 }
 
 function setDraftToPayload(s: SetDraft): TemplateSetCreate {
@@ -48,6 +49,7 @@ function setDraftToPayload(s: SetDraft): TemplateSetCreate {
       (out as any)[key] = v;
     }
   }
+  if (s.notes.trim()) out.notes = s.notes.trim();
   return out;
 }
 
@@ -63,6 +65,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [logType, setLogType] = useState<LogType>("strength");
   const [sets, setSets] = useState<SetDraft[]>([emptySet(1, "strength")]);
+  const [exerciseNotes, setExerciseNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -79,6 +82,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
   const onSelect = (ex: ExerciseResponse) => {
     setSelectedId(ex.id);
     setError("");
+    setExerciseNotes("");
     // Auto-suggest log_type based on muscle group
     const cats = parseMuscleGroups(ex);
     const isCardio = cats.includes("Cardio");
@@ -100,6 +104,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
       log_type: last?.log_type ?? logType,
       enabled: last ? [...last.enabled] : defaultFieldsFor(logType),
       values: { ...(last?.values ?? {}) },
+      notes: "",
     }]);
   };
 
@@ -122,12 +127,14 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
         log_type: logType,
         sets: sets.map(setDraftToPayload),
       };
+      if (exerciseNotes.trim()) payload.notes = exerciseNotes.trim();
       await onAdd(payload);
       // Reset for next add
       setSelectedId(null);
       setSearch("");
       setSets([emptySet(1, "strength")]);
       setLogType("strength");
+      setExerciseNotes("");
       onClose();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to add");
@@ -248,6 +255,18 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                     </div>
                   </div>
 
+                  {/* Exercise-level notes */}
+                  <div className="mb-3">
+                    <label className="text-xs text-secondary block mb-1">Exercise notes (e.g. "2 min rest between sets")</label>
+                    <input
+                      type="text"
+                      value={exerciseNotes}
+                      onChange={(e) => setExerciseNotes(e.target.value)}
+                      placeholder="Optional"
+                      className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-primary placeholder-secondary w-full"
+                    />
+                  </div>
+
                   {/* Sets */}
                   <div className="space-y-3">
                     {sets.map((s, idx) => (
@@ -272,6 +291,13 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                             updateSet(idx, { values: { ...s.values, [field]: value } })
                           }
                           compact
+                        />
+                        <input
+                          type="text"
+                          value={s.notes}
+                          onChange={(e) => updateSet(idx, { notes: e.target.value })}
+                          placeholder="Set notes (optional)"
+                          className="mt-2 bg-surface border border-border rounded-lg px-2 py-1 text-xs text-primary placeholder-secondary w-full"
                         />
                       </div>
                     ))}

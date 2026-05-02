@@ -71,6 +71,11 @@ function SetRow({ set, onUpdate, onDelete }: SetRowProps) {
         <span className="text-xs text-secondary">Set {set.set_number}</span>
         <button onClick={() => onDelete(set.id)} className="text-secondary hover:text-danger text-xs">×</button>
       </div>
+      {set.notes && (
+        <div className="text-[11px] text-blue italic mb-1.5 bg-blue-glow border border-blue/20 rounded px-2 py-1">
+          📝 {set.notes}
+        </div>
+      )}
       <DynamicMetricFields
         logType={(set.log_type ?? "strength") as LogType}
         enabled={enabled}

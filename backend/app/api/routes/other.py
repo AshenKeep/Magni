@@ -1,8 +1,9 @@
 from uuid import UUID
 from typing import Optional
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -15,7 +16,7 @@ from app.schemas.schemas import (
     SyncPayload, SyncResponse,
     DashboardStats,
 )
-from app.core.config import APP_VERSION
+from app.core.config import APP_VERSION, get_settings
 from app.core.security import get_current_user_id
 
 # ---------------------------------------------------------------------------
@@ -77,6 +78,95 @@ async def delete_exercise(
     if not ex:
         raise HTTPException(status_code=404, detail="Exercise not found")
     await db.delete(ex)
+
+
+# v0.0.9 — image upload for user-created exercises ----------------------------
+
+# Magic-byte signatures for accepted image formats. Extension alone is not
+# trusted because an attacker could rename a malicious file.
+_IMAGE_SIGS = {
+    "png":  [b"\x89PNG\r\n\x1a\n"],
+    "jpg":  [b"\xff\xd8\xff"],
+    "gif":  [b"GIF87a", b"GIF89a"],
+    "webp": [b"RIFF"],   # also need WEBP marker at offset 8 — checked below
+}
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+
+
+def _detect_image_kind(blob: bytes) -> Optional[str]:
+    """Return 'png'/'jpg'/'gif'/'webp' or None if blob isn't a known image type."""
+    if blob.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if blob.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if blob.startswith(b"GIF87a") or blob.startswith(b"GIF89a"):
+        return "gif"
+    if blob.startswith(b"RIFF") and len(blob) > 12 and blob[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+@exercises_router.post("/{exercise_id}/upload-image", response_model=ExerciseResponse)
+async def upload_exercise_image(
+    exercise_id: UUID,
+    file: UploadFile = File(...),
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload an image for an exercise. Accepts PNG/JPG/GIF/WEBP up to 5 MB.
+    Saves to /media/exercises/manual_<exercise_id>.<ext> and updates the
+    exercise's gif_url to the new media path.
+    """
+    # Confirm ownership
+    result = await db.execute(
+        select(Exercise).where(Exercise.id == exercise_id, Exercise.user_id == user_id)
+    )
+    ex = result.scalar_one_or_none()
+    if not ex:
+        raise HTTPException(status_code=404, detail="Exercise not found")
+
+    # Read with cap. Reading via .read() loads the whole file; we cap by
+    # checking length after read, which keeps the implementation simple
+    # since FastAPI/Starlette have already buffered to disk if oversized.
+    blob = await file.read()
+    if len(blob) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(blob) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large (max {_MAX_UPLOAD_BYTES // (1024*1024)} MB)")
+
+    kind = _detect_image_kind(blob)
+    if kind is None:
+        raise HTTPException(status_code=400, detail="Unsupported image type — use PNG, JPG, GIF, or WEBP")
+
+    # Save to media dir
+    media_dir = Path(get_settings().media_dir)
+    try:
+        media_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot prepare media dir: {exc}") from exc
+
+    # Remove any prior manual upload for this exercise (different extensions)
+    for old in media_dir.glob(f"manual_{exercise_id}.*"):
+        try:
+            old.unlink()
+        except Exception:
+            pass
+
+    fname = f"manual_{exercise_id}.{kind}"
+    target = media_dir / fname
+    try:
+        target.write_bytes(blob)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {exc}") from exc
+
+    # Update DB pointer
+    ex.gif_url = f"/media/exercises/{fname}"
+    if not ex.source:
+        ex.source = "manual"
+    await db.flush()
+    return ex
+
 
 
 # ---------------------------------------------------------------------------

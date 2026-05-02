@@ -41,6 +41,31 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+/** Multipart upload helper. Browser sets Content-Type with the boundary, so we
+ *  must NOT set it manually — that's why this can't share the request() body. */
+async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: fd });
+
+  if (res.status === 401) {
+    clearToken();
+    window.location.href = "/login";
+    throw new Error("Unauthenticated");
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Upload failed");
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
 export const api = {
   auth: {
     login:    (email: string, password: string) => request<{ access_token: string }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
@@ -76,6 +101,7 @@ export const api = {
     create: (body: { name: string; muscle_group?: string; muscle_groups?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string; ascendapi_id?: string; workoutx_id?: string; source?: string }) => request<ExerciseResponse>("/api/exercises/", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: { name?: string; muscle_group?: string; muscle_groups?: string; equipment?: string; notes?: string; instructions?: string; gif_url?: string; video_url?: string }) => request<ExerciseResponse>(`/api/exercises/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
     delete: (id: string) => request<void>(`/api/exercises/${id}`, { method: "DELETE" }),
+    uploadImage: (id: string, file: File) => uploadFile<ExerciseResponse>(`/api/exercises/${id}/upload-image`, file),
   },
 
   templates: {
@@ -103,7 +129,12 @@ export const api = {
 
   admin: {
     backupStatus:    () => request<BackupStatus>("/api/admin/backup/status"),
-    runBackup:       () => request<{ status: string }>("/api/admin/backup/run", { method: "POST" }),
+    runBackup:       (body: { include_media?: boolean } = {}) => request<BackupCreateResponse>("/api/admin/backup/run", { method: "POST", body: JSON.stringify(body) }),
+    listBackups:     () => request<BackupListEntry[]>("/api/admin/backup/list"),
+    getBackupSettings: () => request<BackupSettingsResponse>("/api/admin/backup/settings"),
+    updateBackupSettings: (body: { retention_days?: number; include_media?: boolean }) => request<BackupSettingsResponse>("/api/admin/backup/settings", { method: "PATCH", body: JSON.stringify(body) }),
+    restoreBackup:   (filename: string) => request<BackupRestoreResponse>(`/api/admin/backup/restore/${encodeURIComponent(filename)}`, { method: "POST" }),
+    deleteBackup:    (filename: string) => request<void>(`/api/admin/backup/${encodeURIComponent(filename)}`, { method: "DELETE" }),
     listUsers:       () => request<AdminUser[]>("/api/admin/users"),
     resetPassword:   (email: string, new_password: string) => request<{ status: string }>("/api/admin/users/reset-password", { method: "POST", body: JSON.stringify({ email, new_password }) }),
     toggleActive:    (userId: string) => request<{ email: string; is_active: boolean }>(`/api/admin/users/${userId}/toggle-active`, { method: "PATCH" }),
@@ -302,6 +333,32 @@ export interface HRReadingResponse { id: string; recorded_at: string; bpm: numbe
 export interface BackupStatus {
   last_backup: string | null; last_backup_size_bytes: number | null; backup_count: number;
   schedule: string; timezone: string; backup_dir: string; cifs_path: string | null;
+}
+
+export interface BackupListEntry {
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+  has_media: boolean;
+}
+
+export interface BackupSettingsResponse {
+  retention_days: number;
+  include_media: boolean;
+  updated_at: string;
+}
+
+export interface BackupCreateResponse {
+  filename: string;
+  size_bytes: number;
+  include_media: boolean;
+}
+
+export interface BackupRestoreResponse {
+  filename: string;
+  manifest_version: string | null;
+  media_restored: boolean;
+  media_present_in_backup: boolean;
 }
 
 export interface AdminUser { id: string; email: string; display_name: string; is_active: boolean; created_at: string; }

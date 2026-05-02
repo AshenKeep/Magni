@@ -5,6 +5,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.9] — 2026-05-01
+
+### Added
+
+#### Backend
+- **Backup format overhauled to `.tar.gz`** — each backup is now a single tarball containing `db.sql`, `manifest.json`, and (optionally) the entire `/media` tree. Old `.sql.gz` format from previous releases is no longer produced.
+- **Restore-from-backup** — `POST /api/admin/backup/restore/{filename}` drops the public schema, replays `db.sql` via `psql`, and (if present and requested) replaces `/media` with the backup's media tree.
+- **Backup retention setting** — new `backup_settings` table (singleton) with `retention_days` and `include_media` columns. Default: keep 7 most recent backups, media not included. Configurable per-user from the Admin UI.
+- **Media in backups (optional)** — when enabled, scheduled backups bundle `/media`. The manifest records every file's relative path, size, and mtime; the next backup compares against the previous manifest and notes "media unchanged" in the new manifest if every file matches (file walk avoids being a perf cliff at scale).
+- **`POST /api/admin/backup/list`** — returns all backups in the directory with size, created_at, and whether they include media.
+- **`POST /api/admin/backup/run`** now accepts `{include_media}` to override the stored setting for one-off runs.
+- **`DELETE /api/admin/backup/{filename}`** — manually delete a backup.
+- **`POST /api/exercises/{id}/upload-image`** — multipart upload for user-supplied exercise images. Accepts PNG/JPG/GIF/WEBP, capped at 5 MB, validated by magic-byte signature (not just extension). Saved to `/media/exercises/manual_<id>.<ext>` and `gif_url` is updated.
+- **Migration `0007`** — creates `backup_settings`. App lazy-creates the singleton row on first read.
+
+#### Frontend
+- **Calendar: schedule a template** — every template in the day picker now has two buttons: "Schedule" (creates a planned workout on that date without opening the logger) and, only when the chosen day is today, "▶ Start now" (the previous behaviour). Off-today scheduling tells the user to tap the planned workout later when it's time to log.
+- **Template notes — exercise-level and per-set** — both `TemplateExercise.notes` and `TemplateSet.notes` are now editable in the picker (and `AddToTemplateModal`). Surfaced in:
+  - Template detail page (italic blue under each exercise / each set)
+  - Workout logger (when starting from a template, the exercise-level note is prepended to the first set's notes; per-set notes appear in a callout above each set's metric inputs)
+- **Image upload UI on exercise edit modal** — for any saved exercise, "📷 Upload image" button accepts a local file and uploads to the new endpoint. The modal continues to support pasting a URL as the alternative.
+- **Admin → Backups section** rewritten — status grid + retention input + include-media toggle + a list of every backup with Restore / Delete buttons. Restore requires explicit confirm because it overwrites everything.
+
+### Changed
+
+- **`run_backup()` reads `BackupSettings`** — APScheduler-driven backups now honour the user's retention/media-inclusion choice instead of hard-coded 30-day pruning.
+- **`start_workout_from_template`** — copies template-exercise notes into the first set's notes so they're visible in the logger without an extra round trip.
+
+### Notes
+
+- Existing `.sql.gz` backups from v0.0.8 and earlier will not appear in the new "Available backups" list (the list filters by the new `*.tar.gz` prefix). They still sit in `/backups` until manually removed.
+- Restore is destructive — it drops the `public` schema then replays the dump. Plan accordingly when restoring on a live deployment.
+- Image upload endpoint requires the exercise to already exist. Save the exercise first, then upload — the modal explains this.
+- Old single-tag muscle-group selector is still used in the create-exercise form. Multi-category tagging via `muscle_groups` is read-only here for now (set by the seed providers).
+
+---
+
 ## [0.0.8] — 2026-05-01
 
 ### Added

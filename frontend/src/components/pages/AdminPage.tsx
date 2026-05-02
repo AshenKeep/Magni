@@ -126,8 +126,38 @@ export default function AdminPage() {
   const { data: seedLogs, refetch: refetchLogs } = useQuery({ queryKey: ["seed-logs"], queryFn: api.admin.seedLogs });
 
   const runBackup = useMutation({
-    mutationFn: api.admin.runBackup,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["backup-status"] }),
+    mutationFn: (body: { include_media?: boolean } = {}) => api.admin.runBackup(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["backup-status"] });
+      qc.invalidateQueries({ queryKey: ["backup-list"] });
+    },
+  });
+
+  // v0.0.9 — backup management
+  const { data: backupList } = useQuery({
+    queryKey: ["backup-list"], queryFn: api.admin.listBackups,
+  });
+  const { data: backupSettings } = useQuery({
+    queryKey: ["backup-settings"], queryFn: api.admin.getBackupSettings,
+  });
+  const updateBackupSettings = useMutation({
+    mutationFn: (body: { retention_days?: number; include_media?: boolean }) =>
+      api.admin.updateBackupSettings(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["backup-settings"] }),
+  });
+  const restoreBackup = useMutation({
+    mutationFn: (filename: string) => api.admin.restoreBackup(filename),
+    onSuccess: () => {
+      // After restore, virtually everything has changed — refetch broadly
+      qc.invalidateQueries();
+    },
+  });
+  const deleteBackup = useMutation({
+    mutationFn: (filename: string) => api.admin.deleteBackup(filename),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["backup-list"] });
+      qc.invalidateQueries({ queryKey: ["backup-status"] });
+    },
   });
 
   const resetPasswordMutation = useMutation({
@@ -186,24 +216,117 @@ export default function AdminPage() {
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-border bg-card flex items-center justify-between">
           <p className="font-medium text-primary">Backup</p>
-          <button onClick={() => runBackup.mutate()} disabled={runBackup.isPending} className="btn-primary text-xs">
-            {runBackup.isPending ? "Running…" : "▶ Run now"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => runBackup.mutate({})}
+              disabled={runBackup.isPending}
+              className="btn-primary text-xs"
+            >
+              {runBackup.isPending ? "Running…" : "▶ Run now"}
+            </button>
+          </div>
         </div>
-        <div className="p-5 grid grid-cols-2 md:grid-cols-3 gap-4">
-          {[
-            { label: "Last backup",   value: backupStatus?.last_backup ?? "Never" },
-            { label: "Backup size",   value: fmtBytes(backupStatus?.last_backup_size_bytes ?? null) },
-            { label: "Total backups", value: String(backupStatus?.backup_count ?? 0) },
-            { label: "Schedule",      value: backupStatus?.schedule ?? "—" },
-            { label: "Timezone",      value: backupStatus?.timezone ?? "—" },
-            { label: "NAS path",      value: backupStatus?.cifs_path ?? "—" },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <p className="label">{label}</p>
-              <p className="text-sm text-primary font-mono truncate">{value}</p>
+        <div className="p-5 space-y-5">
+          {/* Status grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[
+              { label: "Last backup",   value: backupStatus?.last_backup ?? "Never" },
+              { label: "Backup size",   value: fmtBytes(backupStatus?.last_backup_size_bytes ?? null) },
+              { label: "Total backups", value: String(backupStatus?.backup_count ?? 0) },
+              { label: "Schedule",      value: backupStatus?.schedule ?? "—" },
+              { label: "Timezone",      value: backupStatus?.timezone ?? "—" },
+              { label: "NAS path",      value: backupStatus?.cifs_path ?? "—" },
+            ].map(({ label, value }) => (
+              <div key={label}>
+                <p className="label">{label}</p>
+                <p className="text-sm text-primary font-mono truncate">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Settings */}
+          <div className="border-t border-border pt-5 space-y-3">
+            <p className="text-sm font-medium text-primary">Settings</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Retention (number of past backups to keep)</label>
+                <input
+                  type="number"
+                  min={1} max={365}
+                  defaultValue={backupSettings?.retention_days ?? 7}
+                  key={backupSettings?.retention_days ?? 0}
+                  onBlur={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (Number.isFinite(v) && v >= 1 && v !== backupSettings?.retention_days) {
+                      updateBackupSettings.mutate({ retention_days: v });
+                    }
+                  }}
+                  className="input"
+                />
+                <p className="text-xs text-secondary mt-1">
+                  Older backups are pruned after each run. Default 7.
+                </p>
+              </div>
+              <div>
+                <label className="label">Include media (exercise GIFs/images)</label>
+                <button
+                  onClick={() => updateBackupSettings.mutate({
+                    include_media: !(backupSettings?.include_media ?? false),
+                  })}
+                  className={`btn-secondary w-full text-left text-sm ${backupSettings?.include_media ? "border-blue text-blue" : ""}`}
+                >
+                  {backupSettings?.include_media ? "✓ Enabled" : "✗ Disabled"} — click to toggle
+                </button>
+                <p className="text-xs text-secondary mt-1">
+                  When on, scheduled backups also bundle /media. Skipped re-tar if media unchanged.
+                </p>
+              </div>
             </div>
-          ))}
+          </div>
+
+          {/* Backup list */}
+          <div className="border-t border-border pt-5 space-y-2">
+            <p className="text-sm font-medium text-primary">Available backups</p>
+            {(!backupList || backupList.length === 0) && (
+              <p className="text-secondary text-xs">No backups yet.</p>
+            )}
+            {backupList && backupList.length > 0 && (
+              <div className="space-y-1">
+                {backupList.map((b) => (
+                  <div key={b.filename} className="flex items-center justify-between gap-3 bg-card border border-border rounded-lg px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-primary font-mono truncate">{b.filename}</p>
+                      <p className="text-[10px] text-secondary">
+                        {fmtBytes(b.size_bytes)} · {new Date(b.created_at).toLocaleString()}
+                        {b.has_media ? " · with media" : ""}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => {
+                          if (confirm(`RESTORE from "${b.filename}"?\n\nThis WILL ERASE current data and replace it with the backup. This cannot be undone.`)) {
+                            restoreBackup.mutate(b.filename);
+                          }
+                        }}
+                        disabled={restoreBackup.isPending}
+                        className="text-xs text-blue hover:text-blue-dim disabled:opacity-50"
+                      >
+                        {restoreBackup.isPending && restoreBackup.variables === b.filename ? "Restoring…" : "Restore"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete "${b.filename}"?`)) deleteBackup.mutate(b.filename);
+                        }}
+                        className="text-xs text-secondary hover:text-danger"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -452,7 +575,7 @@ export default function AdminPage() {
       <div className="card p-5">
         <p className="label mb-3">System</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.8</span></div>
+          <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.9</span></div>
           <div><span className="text-secondary">Environment </span><span className="text-primary font-mono">{import.meta.env.MODE}</span></div>
           <div><span className="text-secondary">Media storage </span><span className="text-primary font-mono">{mediaStatus?.media_storage ?? "…"}</span></div>
           <div><span className="text-secondary">GIFs cached </span><span className="text-primary font-mono">{mediaStatus?.gif_count ?? 0}</span></div>

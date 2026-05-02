@@ -248,3 +248,18 @@ class ApiKey(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Backup settings — singleton row for retention + media-inclusion preferences
+# ---------------------------------------------------------------------------
+class BackupSettings(Base):
+    __tablename__ = "backup_settings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # How many past backup files to retain (oldest pruned after each backup).
+    # Default 7 — i.e. one week of daily backups.
+    retention_days: Mapped[int] = mapped_column(Integer, default=7, nullable=False)
+    # Whether scheduled backups also include /media (exercise GIFs etc).
+    include_media: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

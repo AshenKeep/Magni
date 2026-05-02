@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.8
+**Version:** v0.0.9
 
 A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 
@@ -151,13 +151,27 @@ docker compose exec backend python -m app.cli list-users
 
 ## Backup & restore
 
-Backups run automatically per `BACKUP_SCHEDULE`. Files are written as `magni_backup_YYYYMMDD_HHMMSS.sql.gz`, kept for 30 days.
+Backups run automatically per `BACKUP_SCHEDULE`. As of v0.0.9 they are written as `magni_backup_YYYYMMDD_HHMMSS.tar.gz`, each tarball containing:
 
-Trigger manually from **Admin → Backup → Run now**.
+- `db.sql` — pg_dump output
+- `manifest.json` — backup metadata + media file list with sizes/mtimes
+- `media/...` — copy of `/media` (only if "Include media" is enabled in Admin → Backup)
 
-Restore:
+**Retention** is configurable from Admin → Backup → Settings (default 7 most recent backups). Older backups are pruned after each run.
+
+**Restore** from the UI: Admin → Backup → pick a backup → Restore. This drops the public schema, replays `db.sql`, and (if media is in the tarball) replaces `/media`. Restore is destructive and cannot be undone — confirm carefully.
+
+Manual restore from CLI (rare — UI is preferred):
 ```bash
-gunzip -c magni_backup_YYYYMMDD_HHMMSS.sql.gz | docker compose exec -T db psql -U magni magni
+# Extract the archive somewhere temporary
+tar -xzf magni_backup_YYYYMMDD_HHMMSS.tar.gz -C /tmp/restore
+
+# Replay the SQL
+docker compose exec -T db psql -U magni -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;"
+docker compose exec -T db psql -U magni magni < /tmp/restore/db.sql
+
+# Restore media (if present in the archive)
+rm -rf /path/to/media && cp -r /tmp/restore/media /path/to/media
 ```
 
 ---
@@ -215,7 +229,13 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 | `POST` | `/api/admin/api-keys` | Save/update provider key |
 | `DELETE` | `/api/admin/api-keys/{provider}` | Remove provider key |
 | `GET` | `/api/admin/backup/status` | Backup status |
-| `POST` | `/api/admin/backup/run` | Manual backup |
+| `GET` | `/api/admin/backup/list` | List available backups |
+| `GET` | `/api/admin/backup/settings` | Get retention/include_media settings |
+| `PATCH` | `/api/admin/backup/settings` | Update retention/include_media |
+| `POST` | `/api/admin/backup/run` | Manual backup (optional `include_media` body) |
+| `POST` | `/api/admin/backup/restore/{filename}` | Restore from a backup (DESTRUCTIVE) |
+| `DELETE` | `/api/admin/backup/{filename}` | Delete a backup file |
+| `POST` | `/api/exercises/{id}/upload-image` | Upload PNG/JPG/GIF/WEBP image (≤5 MB) |
 | `GET` | `/api/admin/exercises/seed/estimate` | Quota estimate |
 | `POST` | `/api/admin/exercises/seed` | Seed exercises (provider param) |
 | `POST` | `/api/admin/exercises/download-gifs` | Cache GIFs locally |

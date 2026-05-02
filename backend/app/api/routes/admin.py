@@ -9,13 +9,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.db.session import get_db
-from app.models.models import User, Exercise, SeedLog, ApiKey
+from app.models.models import User, Exercise, SeedLog, ApiKey, BackupSettings
 from app.schemas.schemas import (
     BackupStatus, AdminUserResponse, PasswordResetRequest, SeedLogResponse,
+    BackupListEntry, BackupSettingsResponse, BackupSettingsUpdate,
+    BackupCreateRequest, BackupCreateResponse, BackupRestoreResponse,
 )
 from app.core.security import get_current_user_id, hash_password
 from app.core.config import get_settings
-from app.services.backup import run_backup
+from app.services.backup import (
+    run_backup, create_backup, restore_backup, list_backups, DEFAULT_RETENTION_DAYS,
+)
 from app.services import ascendapi, workoutx
 from app.services.api_keys import (
     get_api_key, set_api_key, delete_api_key, list_api_keys, mask_key,
@@ -31,12 +35,11 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/backup/status", response_model=BackupStatus)
 async def backup_status(_: str = Depends(get_current_user_id)):
     settings = get_settings()
-    backup_dir = Path(settings.backup_dir)
-    backups = sorted(backup_dir.glob("magni_backup_*.sql.gz")) if backup_dir.exists() else []
-    last = backups[-1] if backups else None
+    backups = list_backups()
+    last = backups[0] if backups else None
     return BackupStatus(
-        last_backup=last.name if last else None,
-        last_backup_size_bytes=last.stat().st_size if last else None,
+        last_backup=last.filename if last else None,
+        last_backup_size_bytes=last.size_bytes if last else None,
         backup_count=len(backups),
         schedule=settings.backup_schedule,
         timezone=settings.tz,
@@ -45,10 +48,108 @@ async def backup_status(_: str = Depends(get_current_user_id)):
     )
 
 
-@router.post("/backup/run")
-async def trigger_backup(_: str = Depends(get_current_user_id)):
-    run_backup()
-    return {"status": "backup triggered"}
+async def _get_or_create_backup_settings(db: AsyncSession) -> BackupSettings:
+    """Lazy singleton — first call creates a row with defaults."""
+    row = (await db.execute(select(BackupSettings).limit(1))).scalar_one_or_none()
+    if row is None:
+        row = BackupSettings(retention_days=DEFAULT_RETENTION_DAYS, include_media=False)
+        db.add(row)
+        await db.flush()
+    return row
+
+
+@router.get("/backup/settings", response_model=BackupSettingsResponse)
+async def get_backup_settings(
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _get_or_create_backup_settings(db)
+
+
+@router.patch("/backup/settings", response_model=BackupSettingsResponse)
+async def update_backup_settings(
+    payload: BackupSettingsUpdate,
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await _get_or_create_backup_settings(db)
+    if payload.retention_days is not None:
+        if payload.retention_days < 1 or payload.retention_days > 365:
+            raise HTTPException(status_code=400, detail="retention_days must be between 1 and 365")
+        row.retention_days = payload.retention_days
+    if payload.include_media is not None:
+        row.include_media = payload.include_media
+    await db.flush()
+    return row
+
+
+@router.get("/backup/list", response_model=list[BackupListEntry])
+async def list_backup_files(_: str = Depends(get_current_user_id)):
+    return [
+        BackupListEntry(
+            filename=b.filename,
+            size_bytes=b.size_bytes,
+            created_at=b.created_at,
+            has_media=b.has_media,
+        )
+        for b in list_backups()
+    ]
+
+
+@router.post("/backup/run", response_model=BackupCreateResponse)
+async def trigger_backup(
+    payload: BackupCreateRequest = BackupCreateRequest(),
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trigger an ad-hoc backup. include_media defaults to whatever is in
+    BackupSettings; pass include_media in the body to override for one run.
+    """
+    settings_row = await _get_or_create_backup_settings(db)
+    include_media = payload.include_media if payload.include_media is not None else settings_row.include_media
+    try:
+        path = create_backup(include_media=include_media, retention_days=settings_row.retention_days)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Backup failed: {exc}") from exc
+    return BackupCreateResponse(
+        filename=path.name,
+        size_bytes=path.stat().st_size,
+        include_media=include_media,
+    )
+
+
+@router.post("/backup/restore/{filename}", response_model=BackupRestoreResponse)
+async def restore_backup_file(
+    filename: str,
+    _: str = Depends(get_current_user_id),
+):
+    """
+    Restore from the named backup. **Destructive** — drops the public schema
+    and replays the dump. Media is restored if present in the tarball.
+    """
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    try:
+        result = restore_backup(filename, restore_media=True)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Backup not found")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Restore failed: {exc}") from exc
+    return BackupRestoreResponse(**result)
+
+
+@router.delete("/backup/{filename}", status_code=204)
+async def delete_backup_file(
+    filename: str,
+    _: str = Depends(get_current_user_id),
+):
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    target = Path(get_settings().backup_dir) / filename
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Backup not found")
+    target.unlink()
 
 
 # ---------------------------------------------------------------------------

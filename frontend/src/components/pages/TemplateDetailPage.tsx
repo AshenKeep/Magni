@@ -133,10 +133,16 @@ export default function TemplateDetailPage() {
                       </button>
                     </div>
                     <div className="mt-2 space-y-0.5">
+                      {te.notes && (
+                        <div className="text-xs text-blue italic mb-1">📝 {te.notes}</div>
+                      )}
                       {te.sets.sort((a, b) => a.set_number - b.set_number).map(s => (
                         <div key={s.id} className="text-xs">
                           <span className="text-secondary">Set {s.set_number}:</span>{" "}
                           <span className="text-primary">{formatSetSummary(s)}</span>
+                          {s.notes && (
+                            <span className="text-blue italic"> · {s.notes}</span>
+                          )}
                         </div>
                       ))}
                     </div>

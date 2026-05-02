@@ -378,6 +378,45 @@ class BackupConfigUpdate(BaseModel):
     tz: Optional[str] = None
 
 
+# --- v0.0.9 backup management ---
+
+class BackupListEntry(BaseModel):
+    filename: str
+    size_bytes: int
+    created_at: datetime
+    has_media: bool
+
+
+class BackupSettingsResponse(BaseModel):
+    retention_days: int
+    include_media: bool
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class BackupSettingsUpdate(BaseModel):
+    retention_days: Optional[int] = None
+    include_media: Optional[bool] = None
+
+
+class BackupCreateRequest(BaseModel):
+    """Optional override of stored settings for an ad-hoc backup."""
+    include_media: Optional[bool] = None
+
+
+class BackupCreateResponse(BaseModel):
+    filename: str
+    size_bytes: int
+    include_media: bool
+
+
+class BackupRestoreResponse(BaseModel):
+    filename: str
+    manifest_version: Optional[str]
+    media_restored: bool
+    media_present_in_backup: bool
+
+
 class AdminUserResponse(BaseModel):
     id: UUID
     email: str

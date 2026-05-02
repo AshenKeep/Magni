@@ -10,10 +10,11 @@ interface SetDraft {
   log_type: LogType;
   enabled: MetricField[];
   values: Partial<Record<MetricField, number | null>>;
+  notes: string;
 }
 
 function emptySet(num: number, logType: LogType): SetDraft {
-  return { set_number: num, log_type: logType, enabled: defaultFieldsFor(logType), values: {} };
+  return { set_number: num, log_type: logType, enabled: defaultFieldsFor(logType), values: {}, notes: "" };
 }
 
 function setToPayload(s: SetDraft): TemplateSetCreate {
@@ -26,6 +27,7 @@ function setToPayload(s: SetDraft): TemplateSetCreate {
       (out as any)[key] = v;
     }
   }
+  if (s.notes.trim()) out.notes = s.notes.trim();
   return out;
 }
 
@@ -52,6 +54,7 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
   const [templateId, setTemplateId] = useState<string>(templates[0]?.id ?? "");
   const [logType, setLogType] = useState<LogType>(initialType);
   const [sets, setSets] = useState<SetDraft[]>([emptySet(1, initialType)]);
+  const [exerciseNotes, setExerciseNotes] = useState("");
   const [error, setError] = useState("");
 
   const addMut = useMutation({
@@ -77,6 +80,7 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
       log_type: last?.log_type ?? logType,
       enabled: last ? [...last.enabled] : defaultFieldsFor(logType),
       values: { ...(last?.values ?? {}) },
+      notes: "",
     }]);
   };
 
@@ -99,6 +103,7 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
       exercise_id: exercise.id,
       log_type: logType,
       order: tpl?.exercises.length ?? 0,
+      notes: exerciseNotes.trim() || undefined,
       sets: sets.map(setToPayload),
     });
   };
@@ -154,6 +159,17 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
                 </div>
               </div>
 
+              <div>
+                <label className="label">Exercise notes (e.g. "2 min rest")</label>
+                <input
+                  type="text"
+                  value={exerciseNotes}
+                  onChange={(e) => setExerciseNotes(e.target.value)}
+                  placeholder="Optional"
+                  className="input"
+                />
+              </div>
+
               <div className="space-y-2">
                 <label className="label">Sets</label>
                 {sets.map((s, idx) => (
@@ -173,6 +189,13 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
                         updateSet(idx, { values: { ...s.values, [field]: value } })
                       }
                       compact
+                    />
+                    <input
+                      type="text"
+                      value={s.notes}
+                      onChange={(e) => updateSet(idx, { notes: e.target.value })}
+                      placeholder="Set notes (optional)"
+                      className="mt-2 bg-surface border border-border rounded-lg px-2 py-1 text-xs text-primary placeholder-secondary w-full"
                     />
                   </div>
                 ))}
