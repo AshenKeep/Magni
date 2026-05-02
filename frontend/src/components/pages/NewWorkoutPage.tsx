@@ -454,8 +454,8 @@ export default function NewWorkoutPage() {
       exercise_id: exerciseId,
       set_number: exSets.length + 1,
       log_type: (last?.log_type ?? "strength") as LogType,
-      reps: last ? targets[last.id]?.reps ?? null : undefined,
-      weight_kg: last ? targets[last.id]?.weight_kg ?? null : undefined,
+      reps: last ? (targets[last.id]?.reps ?? undefined) : undefined,
+      weight_kg: last ? (targets[last.id]?.weight_kg ?? undefined) : undefined,
     });
     setTargets(prev => ({ ...prev, [newSet.id]: newSet }));
     setSets(prev => [...prev, {
