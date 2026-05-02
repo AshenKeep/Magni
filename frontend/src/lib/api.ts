@@ -68,6 +68,7 @@ export const api = {
     addSet: (workoutId: string, body: WorkoutSetCreate) => request<WorkoutSetResponse>(`/api/workouts/${workoutId}/sets`, { method: "POST", body: JSON.stringify(body) }),
     updateSet: (workoutId: string, setId: string, body: Partial<WorkoutSetResponse> | Partial<WorkoutSetCreate>) => request<WorkoutSetResponse>(`/api/workouts/${workoutId}/sets/${setId}`, { method: "PATCH", body: JSON.stringify(body) }),
     deleteSet: (workoutId: string, setId: string) => request<void>(`/api/workouts/${workoutId}/sets/${setId}`, { method: "DELETE" }),
+    saveAsTemplate: (workoutId: string, body: { name: string; notes?: string }) => request<TemplateResponse>(`/api/workouts/${workoutId}/save-as-template`, { method: "POST", body: JSON.stringify(body) }),
   },
 
   exercises: {

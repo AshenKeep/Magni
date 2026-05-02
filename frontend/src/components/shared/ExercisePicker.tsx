@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type ExerciseResponse, type LogType, type MetricField, type TemplateSetCreate, type TemplateExerciseCreate } from "../../lib/api";
-import { parseMuscleGroups, MUSCLE_CATEGORIES, exerciseMatchesMuscle } from "../../lib/muscleGroups";
+import { parseMuscleGroups, MUSCLE_CATEGORIES, exerciseMatchesMuscle, exerciseMatchesSearch } from "../../lib/muscleGroups";
 import {
   defaultFieldsFor,
   METRIC_TO_TEMPLATE_SET_KEY,
@@ -68,7 +68,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
 
   const filtered = useMemo(() => {
     return exercises.filter(ex => {
-      if (search && !ex.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (!exerciseMatchesSearch(ex, search)) return false;
       if (muscleFilter && !exerciseMatchesMuscle(ex, muscleFilter)) return false;
       return true;
     });
@@ -140,11 +140,11 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-bg-primary border border-border rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-lg font-semibold">{title ?? "Add exercise"}</h2>
-          <button onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none">×</button>
+          <button onClick={onClose} className="text-secondary hover:text-primary text-xl leading-none">×</button>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
@@ -156,12 +156,12 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                 placeholder="Search exercises…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm w-full"
+                className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-primary placeholder-secondary w-full"
               />
               <div className="flex flex-wrap gap-1">
                 <button
                   onClick={() => setMuscleFilter(null)}
-                  className={`text-xs px-2 py-1 rounded ${muscleFilter === null ? "bg-primary text-white" : "bg-bg-secondary text-text-muted hover:text-text-primary"}`}
+                  className={`text-xs px-2 py-1 rounded ${muscleFilter === null ? "bg-blue text-white" : "bg-card text-secondary hover:text-primary"}`}
                 >
                   All
                 </button>
@@ -169,7 +169,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                   <button
                     key={m}
                     onClick={() => setMuscleFilter(m)}
-                    className={`text-xs px-2 py-1 rounded ${muscleFilter === m ? "bg-primary text-white" : "bg-bg-secondary text-text-muted hover:text-text-primary"}`}
+                    className={`text-xs px-2 py-1 rounded ${muscleFilter === m ? "bg-blue text-white" : "bg-card text-secondary hover:text-primary"}`}
                   >
                     {m}
                   </button>
@@ -178,17 +178,17 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
             </div>
             <div className="flex-1 overflow-y-auto">
               {filtered.length === 0 ? (
-                <div className="p-6 text-center text-text-muted text-sm">No exercises match.</div>
+                <div className="p-6 text-center text-secondary text-sm">No exercises match.</div>
               ) : (
                 <ul className="divide-y divide-border">
                   {filtered.map(ex => (
                     <li
                       key={ex.id}
                       onClick={() => onSelect(ex)}
-                      className={`px-4 py-3 cursor-pointer hover:bg-bg-secondary ${selectedId === ex.id ? "bg-bg-secondary border-l-4 border-primary" : ""}`}
+                      className={`px-4 py-3 cursor-pointer hover:bg-card ${selectedId === ex.id ? "bg-card border-l-4 border-blue" : ""}`}
                     >
                       <div className="font-medium text-sm">{ex.name}</div>
-                      <div className="text-xs text-text-muted">
+                      <div className="text-xs text-secondary">
                         {parseMuscleGroups(ex).join(", ") || "—"}
                         {ex.equipment && ` · ${ex.equipment}`}
                       </div>
@@ -202,7 +202,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
           {/* Right: preview + form */}
           <div className="w-1/2 flex flex-col overflow-hidden">
             {!selected ? (
-              <div className="flex-1 flex items-center justify-center text-text-muted text-sm p-8 text-center">
+              <div className="flex-1 flex items-center justify-center text-secondary text-sm p-8 text-center">
                 Pick an exercise from the list to configure sets.
               </div>
             ) : (
@@ -213,17 +213,17 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                       <img
                         src={selected.gif_url}
                         alt={selected.name}
-                        className="w-32 h-32 object-cover rounded-lg bg-bg-secondary"
+                        className="w-32 h-32 object-cover rounded-lg bg-card"
                       />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold">{selected.name}</div>
-                      <div className="text-xs text-text-muted mt-0.5">
+                      <div className="text-xs text-secondary mt-0.5">
                         {parseMuscleGroups(selected).join(", ") || "—"}
                         {selected.equipment && ` · ${selected.equipment}`}
                       </div>
                       {selected.instructions && (
-                        <div className="text-xs text-text-muted mt-2 line-clamp-4">
+                        <div className="text-xs text-secondary mt-2 line-clamp-4">
                           {selected.instructions}
                         </div>
                       )}
@@ -234,13 +234,13 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                 <div className="p-4 flex-1 overflow-y-auto">
                   {/* Log type selector */}
                   <div className="mb-3">
-                    <label className="text-xs text-text-muted block mb-1">Log as</label>
+                    <label className="text-xs text-secondary block mb-1">Log as</label>
                     <div className="flex gap-1">
                       {(["strength", "cardio", "mobility"] as LogType[]).map(t => (
                         <button
                           key={t}
                           onClick={() => changeLogType(t)}
-                          className={`flex-1 text-xs px-3 py-2 rounded ${logType === t ? "bg-primary text-white" : "bg-bg-secondary text-text-muted hover:text-text-primary"}`}
+                          className={`flex-1 text-xs px-3 py-2 rounded ${logType === t ? "bg-blue text-white" : "bg-card text-secondary hover:text-primary"}`}
                         >
                           {LOG_TYPE_LABELS[t]}
                         </button>
@@ -251,13 +251,13 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                   {/* Sets */}
                   <div className="space-y-3">
                     {sets.map((s, idx) => (
-                      <div key={idx} className="bg-bg-secondary border border-border rounded-lg p-3">
+                      <div key={idx} className="bg-card border border-border rounded-lg p-3">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-medium">Set {s.set_number}</span>
                           {sets.length > 1 && (
                             <button
                               onClick={() => removeSet(idx)}
-                              className="text-text-muted hover:text-danger text-xs"
+                              className="text-secondary hover:text-danger text-xs"
                             >
                               Remove
                             </button>

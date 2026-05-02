@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ExerciseResponse } from "@/lib/api";
-import { parseMuscleGroups, exerciseMatchesMuscle, MUSCLE_CATEGORIES } from "@/lib/muscleGroups";
+import { parseMuscleGroups, exerciseMatchesMuscle, exerciseMatchesSearch, MUSCLE_CATEGORIES } from "@/lib/muscleGroups";
 import { AddToTemplateModal } from "@/components/shared/AddToTemplateModal";
 
 const MUSCLE_GROUPS = MUSCLE_CATEGORIES;
@@ -172,8 +172,7 @@ export default function ExercisesPage() {
   });
 
   const filtered = (exercises ?? []).filter(e =>
-    (search === "" || e.name.toLowerCase().includes(search.toLowerCase())) &&
-    exerciseMatchesMuscle(e, filterGroup || "all")
+    exerciseMatchesSearch(e, search) && exerciseMatchesMuscle(e, filterGroup || "all")
   );
 
   // Group by primary muscle category, but exercises with multiple categories

@@ -46,8 +46,8 @@ export function DynamicMetricFields({
             className={compact ? "flex items-end gap-1" : "flex items-end gap-2"}
           >
             {!compact && (
-              <label className="text-xs text-text-muted block min-w-[6rem]">
-                {def.label} {def.unit && <span className="text-text-muted/60">({def.unit})</span>}
+              <label className="text-xs text-secondary block min-w-[6rem]">
+                {def.label} {def.unit && <span className="text-secondary/60">({def.unit})</span>}
               </label>
             )}
             <input
@@ -59,15 +59,15 @@ export function DynamicMetricFields({
                 const v = e.target.value;
                 onValueChange(key, v === "" ? null : Number(v));
               }}
-              className="bg-bg-secondary border border-border rounded-lg px-3 py-2 text-sm w-full max-w-[8rem]"
+              className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-primary placeholder-secondary w-full max-w-[8rem]"
             />
             {compact && def.unit && (
-              <span className="text-xs text-text-muted">{def.unit}</span>
+              <span className="text-xs text-secondary">{def.unit}</span>
             )}
             <button
               type="button"
               onClick={() => removeField(key)}
-              className="text-text-muted hover:text-danger text-xs px-1"
+              className="text-secondary hover:text-danger text-xs px-1"
               title="Remove field"
             >
               ×
@@ -87,7 +87,7 @@ export function DynamicMetricFields({
             + Add field
           </button>
           {pickerOpen && (
-            <div className="absolute z-10 mt-1 bg-bg-secondary border border-border rounded-lg shadow-lg py-1 min-w-[10rem]">
+            <div className="absolute z-10 mt-1 bg-card border border-border rounded-lg shadow-lg py-1 min-w-[10rem]">
               {available.map(k => {
                 const def = METRIC_FIELDS[k];
                 return (
@@ -98,9 +98,9 @@ export function DynamicMetricFields({
                       onEnabledChange([...enabled, k]);
                       setPickerOpen(false);
                     }}
-                    className="block w-full text-left text-xs px-3 py-1.5 hover:bg-bg-tertiary"
+                    className="block w-full text-left text-xs px-3 py-1.5 hover:bg-muted"
                   >
-                    {def.label} {def.unit && <span className="text-text-muted">({def.unit})</span>}
+                    {def.label} {def.unit && <span className="text-secondary">({def.unit})</span>}
                   </button>
                 );
               })}

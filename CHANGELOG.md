@@ -5,6 +5,36 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.8] — 2026-05-01
+
+### Added
+
+#### Backend
+- **`POST /api/workouts/{id}/save-as-template`** — turn any logged workout into a reusable template. Each WorkoutSet becomes a TemplateSet, preserving the actual reps/weight/distance/duration logged. Empty workouts (no sets) are rejected.
+- **`started_at` field on `WorkoutUpdate`** — lets the scheduler reposition a workout to a different date after creation (used by the Schedule page when starting from a template on a non-today date).
+
+#### Frontend
+- **Schedule page** (`/workouts`) — replaces the flat workout list with a calendar-driven view. Day, Week, and Month modes; the chosen mode and current cursor date persist across sessions. Click any date cell to either start a blank workout or pick a template; planned (not-yet-started) workouts render in magenta, completed/in-progress in blue.
+- **Save-as-template button** on the workout detail page — for any workout with at least one set, opens a modal to name the template and saves it via the new endpoint, then navigates to the new template's detail page.
+- **Cardio metrics on workout detail** — every workout set now renders all populated metrics (duration, distance, pace, incline, laps, HR, calories) in addition to reps/weight/RPE. Header pill shows the log type (Strength / Cardio / Mobility).
+
+### Fixed
+
+- **Form input visibility** — modals introduced in v0.0.7 (ExercisePicker, AddToTemplateModal, DynamicMetricFields, TemplateDetailPage, TemplatesPage, AdminPage debug box) used invented Tailwind utility names (`bg-bg-secondary`, `text-text-muted`, `bg-bg-primary`) that don't exist in the project's theme, causing inputs to render with browser-default white-on-white text. All replaced with the real theme tokens (`bg-card`, `text-secondary`, `bg-surface`). Inputs also get explicit `text-primary placeholder-secondary` so they remain legible regardless of inherited body styles.
+- **Exercise search not matching** — search fields across the Exercise Library, the in-template-builder picker, and the workout exercise picker now match on name, equipment, muscle groups, secondary muscles, and instructions. A query like "squat" now finds Bodyweight Squat, Front Squat, Goblet Squat, etc. Centralised in a single `exerciseMatchesSearch()` helper to prevent future drift.
+
+### Changed
+
+- **WorkoutsPage** rewritten as a calendar; the old flat list with limit/offset pagination is gone. Date-range filtering on `/api/workouts/` (already supported since v0.0.6) is now used to load only the visible window.
+- **WorkoutDetailPage** rewritten to render dynamic per-set metrics — previously hard-coded a 4-column grid for weight/reps/RPE only.
+
+### Notes
+
+- No new env vars and no schema changes in v0.0.8 — migration count remains at `0006`.
+- The `Save as template` flow does not modify the source workout; it creates a brand-new template you can then edit from the Templates tab.
+
+---
+
 ## [0.0.7] — 2026-04-30
 
 ### Added

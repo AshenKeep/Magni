@@ -8,8 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.models.models import Workout, WorkoutSet
-from app.schemas.schemas import WorkoutCreate, WorkoutUpdate, WorkoutResponse, WorkoutSetCreate, WorkoutSetResponse, WorkoutSetUpdate
+from app.models.models import (
+    Workout, WorkoutSet, Template, TemplateExercise, TemplateSet,
+)
+from app.schemas.schemas import (
+    WorkoutCreate, WorkoutUpdate, WorkoutResponse,
+    WorkoutSetCreate, WorkoutSetResponse, WorkoutSetUpdate,
+    TemplateResponse,
+)
 from app.core.security import get_current_user_id
 
 router = APIRouter(prefix="/workouts", tags=["workouts"])
@@ -199,3 +205,93 @@ async def delete_set(
     if not ws:
         raise HTTPException(status_code=404, detail="Set not found")
     await db.delete(ws)
+
+
+# ---------------------------------------------------------------------------
+# Save a logged workout as a template (v0.0.8)
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BM
+
+
+class SaveAsTemplatePayload(_BM):
+    name: str
+    notes: Optional[str] = None
+
+
+@router.post(
+    "/{workout_id}/save-as-template",
+    response_model=TemplateResponse,
+    status_code=201,
+)
+async def save_workout_as_template(
+    workout_id: UUID,
+    payload: SaveAsTemplatePayload,
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Take a finished (or in-progress) workout and turn it into a reusable
+    template. Each WorkoutSet becomes a TemplateSet under a TemplateExercise
+    grouped by exercise_id, preserving log_type and the actual values logged.
+    """
+    result = await db.execute(
+        select(Workout)
+        .where(Workout.id == workout_id, Workout.user_id == user_id)
+        .options(selectinload(Workout.sets))
+    )
+    workout = result.scalar_one_or_none()
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    if not workout.sets:
+        raise HTTPException(status_code=400, detail="Cannot save empty workout as template")
+
+    template = Template(user_id=user_id, name=payload.name, notes=payload.notes)
+    db.add(template)
+    await db.flush()
+
+    # Group sets by exercise_id to build TemplateExercises in stable order
+    by_exercise: dict[UUID, list[WorkoutSet]] = {}
+    order_seen: list[UUID] = []
+    for s in sorted(workout.sets, key=lambda x: x.set_number):
+        if s.exercise_id not in by_exercise:
+            by_exercise[s.exercise_id] = []
+            order_seen.append(s.exercise_id)
+        by_exercise[s.exercise_id].append(s)
+
+    for idx, ex_id in enumerate(order_seen):
+        sets = by_exercise[ex_id]
+        first = sets[0]
+        te = TemplateExercise(
+            template_id=template.id,
+            exercise_id=ex_id,
+            order=idx,
+            log_type=first.log_type,
+        )
+        db.add(te)
+        await db.flush()
+        for n, s in enumerate(sets, start=1):
+            db.add(TemplateSet(
+                template_exercise_id=te.id,
+                set_number=n,
+                log_type=s.log_type,
+                target_reps=s.reps,
+                target_weight_kg=s.weight_kg,
+                target_duration_seconds=s.duration_seconds,
+                target_distance_m=s.distance_m,
+                target_pace_seconds_per_km=s.pace_seconds_per_km,
+                target_incline_pct=s.incline_pct,
+                target_laps=s.laps,
+                target_avg_heart_rate=s.avg_heart_rate,
+                target_calories=s.calories,
+                notes=s.notes,
+            ))
+
+    await db.flush()
+    # Return full template with exercises and sets
+    result = await db.execute(
+        select(Template)
+        .where(Template.id == template.id)
+        .options(selectinload(Template.exercises).selectinload(TemplateExercise.sets))
+    )
+    return result.scalar_one()

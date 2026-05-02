@@ -121,7 +121,7 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
           </div>
 
           {templates.length === 0 ? (
-            <div className="bg-bg-secondary border border-border rounded-lg p-4 text-sm text-secondary">
+            <div className="bg-card border border-border rounded-lg p-4 text-sm text-secondary">
               You don't have any templates yet. Create one in the Templates tab first.
             </div>
           ) : (
@@ -146,7 +146,7 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
                     <button
                       key={t}
                       onClick={() => changeLogType(t)}
-                      className={`flex-1 text-xs px-3 py-2 rounded ${logType === t ? "bg-primary text-white" : "bg-bg-secondary text-text-muted hover:text-text-primary"}`}
+                      className={`flex-1 text-xs px-3 py-2 rounded ${logType === t ? "bg-blue text-white" : "bg-card text-secondary hover:text-primary"}`}
                     >
                       {LOG_TYPE_LABELS[t]}
                     </button>
@@ -157,11 +157,11 @@ export function AddToTemplateModal({ exercise, onClose }: AddToTemplateModalProp
               <div className="space-y-2">
                 <label className="label">Sets</label>
                 {sets.map((s, idx) => (
-                  <div key={idx} className="bg-bg-secondary border border-border rounded-lg p-3">
+                  <div key={idx} className="bg-card border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium">Set {s.set_number}</span>
                       {sets.length > 1 && (
-                        <button onClick={() => removeSet(idx)} className="text-text-muted hover:text-danger text-xs">Remove</button>
+                        <button onClick={() => removeSet(idx)} className="text-secondary hover:text-danger text-xs">Remove</button>
                       )}
                     </div>
                     <DynamicMetricFields

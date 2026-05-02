@@ -345,7 +345,7 @@ export default function AdminPage() {
           </button>
 
           {debugResult && (
-            <pre className="bg-bg-secondary border border-border text-xs rounded-lg p-3 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">{debugResult}</pre>
+            <pre className="bg-card border border-border text-xs rounded-lg p-3 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap">{debugResult}</pre>
           )}
 
           {seedResult && <SeedResultBox result={seedResult} />}
@@ -452,7 +452,7 @@ export default function AdminPage() {
       <div className="card p-5">
         <p className="label mb-3">System</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.7</span></div>
+          <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.8</span></div>
           <div><span className="text-secondary">Environment </span><span className="text-primary font-mono">{import.meta.env.MODE}</span></div>
           <div><span className="text-secondary">Media storage </span><span className="text-primary font-mono">{mediaStatus?.media_storage ?? "…"}</span></div>
           <div><span className="text-secondary">GIFs cached </span><span className="text-primary font-mono">{mediaStatus?.gif_count ?? 0}</span></div>

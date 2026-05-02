@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ExerciseResponse, WorkoutSetResponse, type LogType, type MetricField } from "@/lib/api";
 import { format } from "date-fns";
 import { DynamicMetricFields } from "@/components/shared/DynamicMetricFields";
 import { defaultFieldsFor, METRIC_TO_WORKOUT_SET_KEY, LOG_TYPE_LABELS } from "@/lib/metrics";
+import { exerciseMatchesSearch } from "@/lib/muscleGroups";
 
 // --- Timer ---
 function useTimer(startTime: Date) {
@@ -89,10 +90,7 @@ function ExercisePicker({ exercises, onSelect, onClose }: {
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const filtered = exercises.filter(e =>
-    e.name.toLowerCase().includes(search.toLowerCase()) ||
-    (e.muscle_group?.toLowerCase().includes(search.toLowerCase()) ?? false)
-  );
+  const filtered = exercises.filter(e => exerciseMatchesSearch(e, search));
 
   const grouped = filtered.reduce((acc, ex) => {
     const group = ex.muscle_group ?? "Other";

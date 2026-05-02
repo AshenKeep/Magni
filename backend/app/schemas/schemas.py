@@ -164,6 +164,7 @@ class WorkoutSetUpdate(BaseModel):
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
+    started_at: Optional[datetime] = None
     ended_at: Optional[datetime] = None
     duration_seconds: Optional[int] = None
     avg_heart_rate: Optional[int] = None

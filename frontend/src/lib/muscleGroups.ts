@@ -54,3 +54,32 @@ export function exerciseMatchesMuscle(
   if (filter === "all" || !filter) return true;
   return parseMuscleGroupsImpl(ex.muscle_groups, ex.muscle_group).includes(filter);
 }
+
+/**
+ * Generic full-text match over an exercise's name + equipment + muscle groups
+ * + secondary muscles + instructions. Case-insensitive, whitespace-insensitive.
+ * This is the search behaviour every picker uses so behaviour is consistent.
+ */
+export function exerciseMatchesSearch(
+  ex: {
+    name: string;
+    equipment: string | null;
+    muscle_group: string | null;
+    muscle_groups: string | null;
+    secondary_muscles: string | null;
+    instructions: string | null;
+  },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    ex.name,
+    ex.equipment ?? "",
+    ex.muscle_group ?? "",
+    ex.muscle_groups ?? "",
+    ex.secondary_muscles ?? "",
+    ex.instructions ?? "",
+  ].join(" ").toLowerCase();
+  return haystack.includes(q);
+}

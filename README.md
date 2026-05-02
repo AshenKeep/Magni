@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.7
+**Version:** v0.0.8
 
 A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 
@@ -193,6 +193,7 @@ Available at `http://localhost:8000/api/docs` when `ENVIRONMENT=development`.
 | `POST` | `/api/workouts/{id}/sets` | Add set |
 | `PATCH` | `/api/workouts/{id}/sets/{set_id}` | Update set |
 | `DELETE` | `/api/workouts/{id}/sets/{set_id}` | Delete set |
+| `POST` | `/api/workouts/{id}/save-as-template` | Convert a logged workout into a reusable template |
 | `POST` | `/api/exercises/` | Add exercise |
 | `GET` | `/api/exercises/` | List exercises |
 | `PATCH` | `/api/exercises/{id}` | Update exercise |
