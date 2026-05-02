@@ -1,95 +1,267 @@
-import { useState, useEffect, useRef } from "react";
+/**
+ * Workout Logger — /workouts/new?workout_id=<id>
+ *
+ * Two phases:
+ *   PRE-START: shows planned sets as read-only targets + big Start button.
+ *   ACTIVE:    global timer runs, each set is editable, each has a Done button
+ *              and a rest-interval stopwatch. Finish button saves & navigates away.
+ */
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ExerciseResponse, WorkoutSetResponse, type LogType, type MetricField } from "@/lib/api";
 import { format } from "date-fns";
+import { api, type WorkoutSetResponse, type ExerciseResponse, type LogType, type MetricField } from "@/lib/api";
 import { DynamicMetricFields } from "@/components/shared/DynamicMetricFields";
-import { defaultFieldsFor, METRIC_TO_WORKOUT_SET_KEY, LOG_TYPE_LABELS } from "@/lib/metrics";
+import { defaultFieldsFor, METRIC_TO_WORKOUT_SET_KEY, LOG_TYPE_LABELS, formatDuration as fmtSecs } from "@/lib/metrics";
 import { exerciseMatchesSearch } from "@/lib/muscleGroups";
 
-// --- Timer ---
-function useTimer(startTime: Date) {
-  const [elapsed, setElapsed] = useState(0);
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function useInterval(fn: () => void, ms: number, running: boolean) {
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
   useEffect(() => {
-    const id = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTime.getTime()) / 1000));
-    }, 1000);
+    if (!running) return;
+    const id = setInterval(() => fnRef.current(), ms);
     return () => clearInterval(id);
-  }, [startTime]);
+  }, [ms, running]);
+}
+
+function fmtTimer(elapsed: number): string {
   const h = Math.floor(elapsed / 3600);
   const m = Math.floor((elapsed % 3600) / 60);
   const s = elapsed % 60;
-  return h > 0
-    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-    : `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (h > 0) return `${h}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
 
-// Helper: determine which metric fields are populated on an existing set so
-// we know what inputs to render. Used when loading sets pre-filled from a
-// template — we honour whatever the template put on the set.
-function detectEnabledFields(set: WorkoutSetResponse): MetricField[] {
-  const enabled: MetricField[] = [];
-  if (set.reps != null) enabled.push("reps");
-  if (set.weight_kg != null) enabled.push("weight_kg");
-  if (set.duration_seconds != null) enabled.push("duration_seconds");
-  if (set.distance_m != null) enabled.push("distance_m");
-  if (set.pace_seconds_per_km != null) enabled.push("pace_seconds_per_km");
-  if (set.incline_pct != null) enabled.push("incline_pct");
-  if (set.laps != null) enabled.push("laps");
-  if (set.avg_heart_rate != null) enabled.push("avg_heart_rate");
-  if (set.calories != null) enabled.push("calories");
-  // If nothing is set yet, fall back to log_type defaults
-  if (enabled.length === 0) return defaultFieldsFor(set.log_type as LogType);
-  return enabled;
+function detectEnabled(set: WorkoutSetResponse): MetricField[] {
+  const fields: MetricField[] = [];
+  if (set.reps != null) fields.push("reps");
+  if (set.weight_kg != null) fields.push("weight_kg");
+  if (set.duration_seconds != null) fields.push("duration_seconds");
+  if (set.distance_m != null) fields.push("distance_m");
+  if (set.pace_seconds_per_km != null) fields.push("pace_seconds_per_km");
+  if (set.incline_pct != null) fields.push("incline_pct");
+  if (set.laps != null) fields.push("laps");
+  if (set.avg_heart_rate != null) fields.push("avg_heart_rate");
+  if (set.calories != null) fields.push("calories");
+  return fields.length ? fields : defaultFieldsFor((set.log_type ?? "strength") as LogType);
 }
 
-// --- Set row (type-aware) ---
-interface SetRowProps {
-  set: WorkoutSetResponse & { exercise_name?: string };
-  onUpdate: (id: string, patch: Partial<WorkoutSetResponse>) => void;
-  onDelete: (id: string) => void;
+function targetSummary(set: WorkoutSetResponse): string {
+  const parts: string[] = [];
+  if (set.reps != null) parts.push(`${set.reps} reps`);
+  if (set.weight_kg != null) parts.push(`${set.weight_kg}kg`);
+  if (set.duration_seconds != null) parts.push(fmtSecs(set.duration_seconds));
+  if (set.distance_m != null) parts.push(set.distance_m >= 1000 ? `${(set.distance_m/1000).toFixed(2)}km` : `${set.distance_m}m`);
+  if (set.laps != null) parts.push(`${set.laps} laps`);
+  if (set.incline_pct != null) parts.push(`${set.incline_pct}%`);
+  if (set.avg_heart_rate != null) parts.push(`HR ${set.avg_heart_rate}`);
+  if (set.calories != null) parts.push(`${set.calories} kcal`);
+  return parts.join(" · ") || "—";
 }
 
-function SetRow({ set, onUpdate, onDelete }: SetRowProps) {
-  const [enabled, setEnabled] = useState<MetricField[]>(() => detectEnabledFields(set));
-  // Snapshot of values for the dynamic-field component
-  const values: Partial<Record<MetricField, number | null>> = {
-    reps: set.reps, weight_kg: set.weight_kg,
-    duration_seconds: set.duration_seconds, distance_m: set.distance_m,
-    pace_seconds_per_km: set.pace_seconds_per_km, incline_pct: set.incline_pct,
-    laps: set.laps, avg_heart_rate: set.avg_heart_rate, calories: set.calories,
-  };
+// ---------------------------------------------------------------------------
+// Rest Timer
+// ---------------------------------------------------------------------------
 
-  const handleValueChange = (field: MetricField, value: number | null) => {
-    const key = METRIC_TO_WORKOUT_SET_KEY[field] as keyof WorkoutSetResponse;
-    onUpdate(set.id, { [key]: value } as Partial<WorkoutSetResponse>);
-  };
-
+function RestTimer() {
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  useInterval(() => setElapsed(e => e + 1), 1000, running);
   return (
-    <div className="border-b border-border/50 py-2 px-1">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-secondary">Set {set.set_number}</span>
-        <button onClick={() => onDelete(set.id)} className="text-secondary hover:text-danger text-xs">×</button>
-      </div>
-      {set.notes && (
-        <div className="text-[11px] text-blue italic mb-1.5 bg-blue-glow border border-blue/20 rounded px-2 py-1">
-          📝 {set.notes}
-        </div>
-      )}
-      <DynamicMetricFields
-        logType={(set.log_type ?? "strength") as LogType}
-        enabled={enabled}
-        values={values}
-        onEnabledChange={setEnabled}
-        onValueChange={handleValueChange}
-        compact
-      />
+    <div className="flex items-center gap-3 py-2 px-3 bg-blue-glow border border-blue/20 rounded-lg text-xs mt-1">
+      <span className="text-secondary">Rest</span>
+      <span className="font-mono text-primary text-sm w-12 text-center">{fmtTimer(elapsed)}</span>
+      <button
+        onClick={() => setRunning(r => !r)}
+        className={`px-3 py-1 rounded text-xs font-medium ${running ? "bg-danger text-white" : "bg-blue text-white"}`}
+      >
+        {running ? "Stop" : "Start"}
+      </button>
+      <button
+        onClick={() => { setElapsed(0); setRunning(false); }}
+        className="text-secondary hover:text-primary"
+      >
+        Reset
+      </button>
     </div>
   );
 }
 
-// --- Exercise picker modal ---
-function ExercisePicker({ exercises, onSelect, onClose }: {
+// ---------------------------------------------------------------------------
+// Set edit modal — full fields
+// ---------------------------------------------------------------------------
+
+function SetEditModal({
+  set,
+  target,
+  onSave,
+  onClose,
+}: {
+  set: SetState;
+  target: WorkoutSetResponse;
+  onSave: (patch: Partial<WorkoutSetResponse>) => void;
+  onClose: () => void;
+}) {
+  const [enabled, setEnabled] = useState<MetricField[]>(() => detectEnabled({ ...target, ...set.actual } as WorkoutSetResponse));
+  const [values, setValues] = useState<Partial<Record<MetricField, number | null>>>({ ...set.actual });
+
+  const handleSave = () => {
+    const patch: Partial<WorkoutSetResponse> = {};
+    for (const f of enabled) {
+      const key = METRIC_TO_WORKOUT_SET_KEY[f] as keyof WorkoutSetResponse;
+      (patch as Record<string, unknown>)[key] = values[f] ?? null;
+    }
+    onSave(patch);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-sm">
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <p className="font-medium text-primary">Set {set.set_number} — edit values</p>
+          <button onClick={onClose} className="text-secondary hover:text-primary text-xl">×</button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="text-xs text-secondary bg-card rounded-lg px-3 py-2">
+            Target: {targetSummary(target)}
+          </div>
+          <DynamicMetricFields
+            logType={(set.log_type ?? "strength") as LogType}
+            enabled={enabled}
+            values={values}
+            onEnabledChange={setEnabled}
+            onValueChange={(f, v) => setValues(prev => ({ ...prev, [f]: v }))}
+            compact={false}
+          />
+        </div>
+        <div className="p-4 border-t border-border flex gap-3">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={handleSave} className="btn-primary flex-1">Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// State shape for a set during active logging
+// ---------------------------------------------------------------------------
+
+interface SetState {
+  id: string;
+  exercise_id: string;
+  set_number: number;
+  log_type: string;
+  is_done: boolean;
+  notes: string | null;
+  // actual values the user enters — start from template targets
+  actual: Partial<Record<MetricField, number | null>>;
+}
+
+function setToActual(s: WorkoutSetResponse): Partial<Record<MetricField, number | null>> {
+  return {
+    reps: s.reps, weight_kg: s.weight_kg,
+    duration_seconds: s.duration_seconds, distance_m: s.distance_m,
+    pace_seconds_per_km: s.pace_seconds_per_km, incline_pct: s.incline_pct,
+    laps: s.laps, avg_heart_rate: s.avg_heart_rate, calories: s.calories,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// In-line set row (compact editing + done button)
+// ---------------------------------------------------------------------------
+
+function SetRow({
+  state,
+  target,
+  active,
+  onFieldChange,
+  onDone,
+  onOpenModal,
+}: {
+  state: SetState;
+  target: WorkoutSetResponse;
+  active: boolean;
+  onFieldChange: (f: MetricField, v: number | null) => void;
+  onDone: () => void;
+  onOpenModal: () => void;
+}) {
+  const [enabled, setEnabled] = useState<MetricField[]>(() => detectEnabled({ ...target, ...state.actual } as WorkoutSetResponse));
+
+  return (
+    <div className={`border border-border rounded-xl p-3 transition-colors ${state.is_done ? "opacity-70 bg-card/50" : "bg-card"}`}>
+      {/* Set header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-secondary">Set {state.set_number}</span>
+          <span className="text-[10px] text-secondary uppercase">{LOG_TYPE_LABELS[(state.log_type ?? "strength") as LogType]}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {active && (
+            <button
+              onClick={onOpenModal}
+              className="text-[10px] text-blue hover:underline"
+            >
+              Edit all
+            </button>
+          )}
+          {active && (
+            <button
+              onClick={onDone}
+              className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                state.is_done
+                  ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                  : "bg-card border border-border hover:border-blue text-secondary"
+              }`}
+            >
+              {state.is_done ? "✓ Done" : "Done"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Target row — always visible */}
+      <div className="text-[11px] text-secondary italic mb-2 px-1">
+        Target: {targetSummary(target)}
+      </div>
+
+      {/* Notes from template */}
+      {state.notes && (
+        <div className="text-[11px] text-blue italic bg-blue-glow border border-blue/20 rounded px-2 py-1 mb-2">
+          📝 {state.notes}
+        </div>
+      )}
+
+      {/* Actual inputs — only editable when workout is active */}
+      {active ? (
+        <DynamicMetricFields
+          logType={(state.log_type ?? "strength") as LogType}
+          enabled={enabled}
+          values={state.actual}
+          onEnabledChange={setEnabled}
+          onValueChange={onFieldChange}
+          compact
+        />
+      ) : (
+        <div className="text-xs text-secondary px-1">
+          {targetSummary({ ...target, ...state.actual } as WorkoutSetResponse)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Exercise picker (reused from v0.0.9, lightweight inline version)
+// ---------------------------------------------------------------------------
+
+function InlineExercisePicker({ exercises, onSelect, onClose }: {
   exercises: ExerciseResponse[];
   onSelect: (ex: ExerciseResponse) => void;
   onClose: () => void;
@@ -97,256 +269,369 @@ function ExercisePicker({ exercises, onSelect, onClose }: {
   const [search, setSearch] = useState("");
   const filtered = exercises.filter(e => exerciseMatchesSearch(e, search));
 
-  const grouped = filtered.reduce((acc, ex) => {
-    const group = ex.muscle_group ?? "Other";
-    if (!acc[group]) acc[group] = [];
-    acc[group].push(ex);
-    return acc;
-  }, {} as Record<string, ExerciseResponse[]>);
-
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-end sm:items-center justify-center p-4">
-      <div className="bg-surface border border-border rounded-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+      <div className="bg-surface border border-border rounded-2xl w-full max-w-md max-h-[70vh] flex flex-col">
         <div className="p-4 border-b border-border flex items-center justify-between">
-          <h3 className="font-medium text-primary">Add exercise</h3>
+          <p className="font-medium text-primary">Add exercise</p>
           <button onClick={onClose} className="text-secondary hover:text-primary text-xl">×</button>
         </div>
         <div className="p-3 border-b border-border">
-          <input
-            autoFocus type="text" placeholder="Search exercises…"
-            value={search} onChange={(e) => setSearch(e.target.value)}
-            className="input"
-          />
+          <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search exercises…" className="input text-sm" />
         </div>
-        <div className="overflow-y-auto flex-1">
-          {Object.entries(grouped).sort().map(([group, exs]) => (
-            <div key={group}>
-              <p className="px-4 py-2 text-xs text-secondary uppercase tracking-wider bg-card/50 sticky top-0">{group}</p>
-              {exs.map((ex) => (
-                <button key={ex.id} onClick={() => { onSelect(ex); onClose(); }}
-                  className="w-full text-left px-4 py-3 hover:bg-card transition-colors border-b border-border/30 flex items-center gap-3">
-                  {ex.gif_url ? (
-                    <img src={ex.gif_url} alt={ex.name} className="w-10 h-10 rounded object-cover bg-card shrink-0" loading="lazy" />
-                  ) : (
-                    <div className="w-10 h-10 rounded bg-card border border-border shrink-0 flex items-center justify-center text-secondary">◈</div>
-                  )}
-                  <div>
-                    <p className="text-sm text-primary">{ex.name}</p>
-                    {ex.equipment && <p className="text-xs text-secondary">{ex.equipment}</p>}
-                  </div>
-                </button>
-              ))}
-            </div>
+        <div className="flex-1 overflow-y-auto divide-y divide-border/40">
+          {filtered.slice(0, 50).map(ex => (
+            <button key={ex.id} onClick={() => onSelect(ex)}
+              className="w-full text-left px-4 py-3 hover:bg-card transition-colors">
+              <p className="text-sm text-primary">{ex.name}</p>
+              <p className="text-xs text-secondary">{ex.equipment ?? "—"}</p>
+            </button>
           ))}
-          {filtered.length === 0 && (
-            <p className="text-secondary text-sm text-center py-8">No exercises found</p>
-          )}
+          {filtered.length === 0 && <p className="p-6 text-center text-secondary text-sm">No results.</p>}
         </div>
       </div>
     </div>
   );
 }
 
-// --- Main component ---
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function NewWorkoutPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const qc = useQueryClient();
-  const startTime = useRef(new Date());
-  const timer = useTimer(startTime.current);
 
-  const [title, setTitle] = useState(searchParams.get("title") ?? `Workout ${format(new Date(), "d MMM")}`);
-  const [workoutId, setWorkoutId] = useState<string | null>(searchParams.get("workout_id"));
-  const [sets, setSets] = useState<(WorkoutSetResponse & { exercise_name: string })[]>([]);
+  const workoutIdParam = searchParams.get("workout_id");
+  const [workoutId, setWorkoutId] = useState<string | null>(workoutIdParam);
+  const [title, setTitle] = useState(`Workout ${format(new Date(), "d MMM")}`);
+
+  // Phase: "pre" = not started yet, "active" = running, "done" = finished
+  const [phase, setPhase] = useState<"pre" | "active" | "done">("pre");
+  const [globalElapsed, setGlobalElapsed] = useState(0);
+  const startedAtRef = useRef<Date | null>(null);
+
+  // The raw server-side sets (used as targets)
+  const [targets, setTargets] = useState<Record<string, WorkoutSetResponse>>({});
+  // The mutable state the user edits
+  const [sets, setSets] = useState<SetState[]>([]);
+  // Order of exercise groups
+  const [exerciseOrder, setExerciseOrder] = useState<string[]>([]);
+
+  const [editModal, setEditModal] = useState<string | null>(null); // set id
   const [showPicker, setShowPicker] = useState(false);
   const [finishing, setFinishing] = useState(false);
 
   const { data: exercises } = useQuery({ queryKey: ["exercises"], queryFn: api.exercises.list });
-
   const exerciseMap = (exercises ?? []).reduce((acc, ex) => { acc[ex.id] = ex; return acc; }, {} as Record<string, ExerciseResponse>);
 
-  // If we navigated here with ?workout_id=… (i.e. started from a template or the
-  // dashboard), load the existing workout and pre-fill the set list.
-  // Crucially: if the workout is still "planned" (no ended_at), we stamp
-  // started_at = NOW so the recorded start time and the on-screen timer are
-  // both accurate — not whatever date the template was originally scheduled for.
+  // Global timer — runs only when phase === "active"
+  useInterval(() => setGlobalElapsed(e => e + 1), 1000, phase === "active");
+
+  // Load existing workout on mount
   useEffect(() => {
-    if (!workoutId || sets.length > 0) return;
+    if (!workoutId) return;
     let cancelled = false;
     (async () => {
       try {
         const w = await api.workouts.get(workoutId);
         if (cancelled) return;
         if (w.title) setTitle(w.title);
-        const enriched = w.sets.map(s => ({
-          ...s,
-          exercise_name: exerciseMap[s.exercise_id]?.name ?? "",
-        }));
-        setSets(enriched);
 
-        // If this is a planned workout (not yet finished), stamp the actual start
-        // time to now so the duration/timer are accurate
-        if (!w.ended_at) {
-          const now = new Date();
-          startTime.current = now;   // reset the in-page timer origin
-          await api.workouts.update(workoutId, { started_at: now.toISOString() });
-        } else {
-          // Workout already ended (continue-editing an old one) — start timer from when it started
-          startTime.current = new Date(w.started_at);
+        const targetsMap: Record<string, WorkoutSetResponse> = {};
+        const newSets: SetState[] = [];
+        const order: string[] = [];
+
+        for (const s of w.sets) {
+          targetsMap[s.id] = s;
+          newSets.push({
+            id: s.id, exercise_id: s.exercise_id, set_number: s.set_number,
+            log_type: s.log_type, is_done: s.is_done, notes: s.notes,
+            actual: setToActual(s),
+          });
+          if (!order.includes(s.exercise_id)) order.push(s.exercise_id);
         }
-      } catch { /* swallow — empty workout is fine */ }
+
+        setTargets(targetsMap);
+        setSets(newSets);
+        setExerciseOrder(order);
+
+        // If the workout was already active (ended_at is null but it has a started_at)
+        // remain in pre phase so the user can explicitly press Start
+      } catch (e) {
+        console.error("Failed to load workout", e);
+      }
     })();
     return () => { cancelled = true; };
-    // Only run on first mount with a workout ID
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workoutId, exercises]);
 
-  // Create workout on first set add if not already created
-  async function ensureWorkout(): Promise<string> {
-    if (workoutId) return workoutId;
-    const w = await api.workouts.create({ title, started_at: startTime.current.toISOString() });
-    setWorkoutId(w.id);
-    return w.id;
-  }
+  // -------------------------------------------------------------------------
+  // Start / Finish
+  // -------------------------------------------------------------------------
 
-  async function addExercise(ex: ExerciseResponse) {
-    const wid = await ensureWorkout();
-    const existingSets = sets.filter(s => s.exercise_id === ex.id);
-    const setNum = existingSets.length + 1;
-    const lastSet = existingSets[existingSets.length - 1];
-    const logType: LogType = (lastSet?.log_type as LogType) ?? "strength";
+  const handleStart = useCallback(async () => {
+    const now = new Date();
+    startedAtRef.current = now;
+    setPhase("active");
 
-    const newSet = await api.workouts.addSet(wid, {
-      exercise_id: ex.id,
-      set_number: setNum,
-      log_type: logType,
-      reps: lastSet?.reps ?? undefined,
-      weight_kg: lastSet?.weight_kg ?? undefined,
-      duration_seconds: lastSet?.duration_seconds ?? undefined,
-      distance_m: lastSet?.distance_m ?? undefined,
-    });
-    setSets(prev => [...prev, { ...newSet, exercise_name: ex.name }]);
-  }
+    // Create the workout if needed (blank workout started from scratch)
+    let wid = workoutId;
+    if (!wid) {
+      const w = await api.workouts.create({ title, started_at: now.toISOString() });
+      wid = w.id;
+      setWorkoutId(wid);
+    } else {
+      // Stamp the actual start time now (not the template schedule date)
+      await api.workouts.update(wid, { started_at: now.toISOString() });
+    }
+  }, [workoutId, title]);
 
-  async function addSetToExercise(exerciseId: string) {
-    const wid = await ensureWorkout();
-    const ex = exerciseMap[exerciseId];
-    const existingSets = sets.filter(s => s.exercise_id === exerciseId);
-    const setNum = existingSets.length + 1;
-    const lastSet = existingSets[existingSets.length - 1];
-    const logType: LogType = (lastSet?.log_type as LogType) ?? "strength";
-
-    const newSet = await api.workouts.addSet(wid, {
-      exercise_id: exerciseId,
-      set_number: setNum,
-      log_type: logType,
-      reps: lastSet?.reps ?? undefined,
-      weight_kg: lastSet?.weight_kg ?? undefined,
-      duration_seconds: lastSet?.duration_seconds ?? undefined,
-      distance_m: lastSet?.distance_m ?? undefined,
-    });
-    setSets(prev => [...prev, { ...newSet, exercise_name: ex?.name ?? "" }]);
-  }
-
-  async function updateSet(setId: string, patch: Partial<WorkoutSetResponse>) {
-    if (!workoutId) return;
-    setSets(prev => prev.map(s => s.id === setId ? { ...s, ...patch } : s));
-    await api.workouts.updateSet(workoutId, setId, patch);
-  }
-
-  async function deleteSet(setId: string) {
-    if (!workoutId) return;
-    await api.workouts.deleteSet(workoutId, setId);
-    setSets(prev => prev.filter(s => s.id !== setId));
-  }
-
-  async function finishWorkout() {
-    if (!workoutId) { navigate("/workouts"); return; }
+  const handleFinish = useCallback(async () => {
+    if (!workoutId || finishing) return;
     setFinishing(true);
-    const duration = Math.floor((Date.now() - startTime.current.getTime()) / 1000);
+    const now = new Date();
+    const duration = startedAtRef.current
+      ? Math.floor((now.getTime() - startedAtRef.current.getTime()) / 1000)
+      : globalElapsed;
+
+    // Save any un-saved set changes first
+    // (sets are saved optimistically on each change, so just finish)
     await api.workouts.update(workoutId, {
       title,
-      ended_at: new Date().toISOString(),
+      ended_at: now.toISOString(),
       duration_seconds: duration,
     });
+
     qc.invalidateQueries({ queryKey: ["workouts"] });
     qc.invalidateQueries({ queryKey: ["workouts-today"] });
     qc.invalidateQueries({ queryKey: ["workouts-activity"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
     navigate(`/workouts/${workoutId}`);
+  }, [workoutId, finishing, title, globalElapsed, navigate, qc]);
+
+  // -------------------------------------------------------------------------
+  // Set manipulation
+  // -------------------------------------------------------------------------
+
+  const updateSetField = useCallback(async (setId: string, f: MetricField, v: number | null) => {
+    setSets(prev => prev.map(s => s.id === setId ? { ...s, actual: { ...s.actual, [f]: v } } : s));
+    if (!workoutId) return;
+    const key = METRIC_TO_WORKOUT_SET_KEY[f];
+    await api.workouts.updateSet(workoutId, setId, { [key]: v });
+  }, [workoutId]);
+
+  const updateSetPatch = useCallback(async (setId: string, patch: Partial<WorkoutSetResponse>) => {
+    setSets(prev => prev.map(s => {
+      if (s.id !== setId) return s;
+      const actual = { ...s.actual };
+      for (const [k, v] of Object.entries(patch)) {
+        const mf = Object.entries(METRIC_TO_WORKOUT_SET_KEY).find(([, mk]) => mk === k)?.[0] as MetricField | undefined;
+        if (mf) actual[mf] = v as number;
+      }
+      return { ...s, actual };
+    }));
+    if (!workoutId) return;
+    await api.workouts.updateSet(workoutId, setId, patch);
+  }, [workoutId]);
+
+  const toggleDone = useCallback(async (setId: string) => {
+    const set = sets.find(s => s.id === setId);
+    if (!set) return;
+    const newDone = !set.is_done;
+    setSets(prev => prev.map(s => s.id === setId ? { ...s, is_done: newDone } : s));
+    if (!workoutId) return;
+    await api.workouts.updateSet(workoutId, setId, { is_done: newDone });
+  }, [sets, workoutId]);
+
+  const addSet = useCallback(async (exerciseId: string) => {
+    if (!workoutId) return;
+    const exSets = sets.filter(s => s.exercise_id === exerciseId);
+    const last = exSets[exSets.length - 1];
+    const newSet = await api.workouts.addSet(workoutId, {
+      exercise_id: exerciseId,
+      set_number: exSets.length + 1,
+      log_type: (last?.log_type ?? "strength") as LogType,
+      reps: last ? targets[last.id]?.reps ?? null : undefined,
+      weight_kg: last ? targets[last.id]?.weight_kg ?? null : undefined,
+    });
+    setTargets(prev => ({ ...prev, [newSet.id]: newSet }));
+    setSets(prev => [...prev, {
+      id: newSet.id, exercise_id: exerciseId, set_number: newSet.set_number,
+      log_type: newSet.log_type, is_done: false, notes: null,
+      actual: setToActual(newSet),
+    }]);
+  }, [workoutId, sets, targets]);
+
+  const addExercise = useCallback(async (ex: ExerciseResponse) => {
+    if (!workoutId) return;
+    const newSet = await api.workouts.addSet(workoutId, {
+      exercise_id: ex.id, set_number: 1,
+      log_type: "strength",
+    });
+    setTargets(prev => ({ ...prev, [newSet.id]: newSet }));
+    setSets(prev => [...prev, {
+      id: newSet.id, exercise_id: ex.id, set_number: 1,
+      log_type: newSet.log_type, is_done: false, notes: null,
+      actual: setToActual(newSet),
+    }]);
+    setExerciseOrder(prev => prev.includes(ex.id) ? prev : [...prev, ex.id]);
+    setShowPicker(false);
+  }, [workoutId]);
+
+  // -------------------------------------------------------------------------
+  // Grouped view
+  // -------------------------------------------------------------------------
+
+  const groupedSets = exerciseOrder.map(exId => ({
+    exercise_id: exId,
+    sets: sets.filter(s => s.exercise_id === exId).sort((a, b) => a.set_number - b.set_number),
+  }));
+
+  // Any sets from exercises not in order yet (edge case)
+  const unmappedExIds = [...new Set(sets.map(s => s.exercise_id).filter(id => !exerciseOrder.includes(id)))];
+  for (const id of unmappedExIds) {
+    groupedSets.push({ exercise_id: id, sets: sets.filter(s => s.exercise_id === id) });
   }
 
-  // Group sets by exercise
-  const exerciseGroups = sets.reduce((acc, s) => {
-    if (!acc[s.exercise_id]) acc[s.exercise_id] = [];
-    acc[s.exercise_id].push(s);
-    return acc;
-  }, {} as Record<string, typeof sets>);
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
+
+  const isActive = phase === "active";
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
+    <div className="max-w-2xl mx-auto p-6 space-y-4 pb-24">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
           <input
-            value={title} onChange={(e) => setTitle(e.target.value)}
-            className="bg-transparent text-xl font-bold text-primary border-none outline-none w-64"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            className="bg-transparent text-xl font-bold text-primary border-none outline-none w-full truncate"
           />
-          <p className="text-blue font-mono text-lg">{timer}</p>
+          {isActive && (
+            <p className="font-mono text-blue text-lg">{fmtTimer(globalElapsed)}</p>
+          )}
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => navigate("/workouts")} className="btn-secondary text-xs">Discard</button>
-          <button onClick={finishWorkout} disabled={finishing} className="btn-primary">
-            {finishing ? "Saving…" : "Finish ✓"}
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => navigate(-1)}
+            className="btn-secondary text-xs"
+          >
+            {isActive ? "Discard" : "← Back"}
           </button>
+          {isActive && (
+            <button
+              onClick={handleFinish}
+              disabled={finishing}
+              className="btn-primary"
+            >
+              {finishing ? "Saving…" : "Finish ✓"}
+            </button>
+          )}
         </div>
       </div>
 
+      {/* PRE-START banner */}
+      {!isActive && (
+        <div className="card p-6 text-center space-y-4">
+          <p className="text-secondary text-sm">
+            {sets.length > 0
+              ? `${groupedSets.length} exercise${groupedSets.length !== 1 ? "s" : ""} · ${sets.length} set${sets.length !== 1 ? "s" : ""} planned below`
+              : "Add exercises below or start a blank session."}
+          </p>
+          <button onClick={handleStart} className="btn-primary text-base px-8 py-3">
+            ▶ Start workout
+          </button>
+        </div>
+      )}
+
       {/* Exercise groups */}
-      {Object.entries(exerciseGroups).map(([exerciseId, exSets]) => {
-        const logType = (exSets[0].log_type ?? "strength") as LogType;
+      {groupedSets.map(({ exercise_id, sets: exSets }) => {
+        const ex = exerciseMap[exercise_id];
+        const doneSets = exSets.filter(s => s.is_done).length;
+        const totalSets = exSets.length;
+
         return (
-          <div key={exerciseId} className="card overflow-hidden">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-card">
-              <div>
-                <p className="font-medium text-primary">{exSets[0].exercise_name}</p>
-                <p className="text-[10px] text-secondary uppercase tracking-wide">{LOG_TYPE_LABELS[logType]}</p>
+          <div key={exercise_id} className="card overflow-hidden">
+            {/* Exercise header */}
+            <div className="px-4 py-3 border-b border-border bg-card flex items-center gap-3">
+              {ex?.gif_url && (
+                <img src={ex.gif_url} alt="" className="w-10 h-10 rounded-lg object-cover" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-primary truncate">{ex?.name ?? "Unknown"}</p>
+                {isActive && (
+                  <p className="text-xs text-secondary">
+                    {doneSets}/{totalSets} sets done
+                  </p>
+                )}
               </div>
-              <button
-                onClick={() => addSetToExercise(exerciseId)}
-                className="text-xs text-blue hover:text-blue-dim transition-colors"
-              >
-                + Add set
-              </button>
             </div>
-            <div className="px-4 py-2 space-y-1">
-              {exSets.sort((a, b) => a.set_number - b.set_number).map((s) => (
-                <SetRow key={s.id} set={s} onUpdate={updateSet} onDelete={deleteSet} />
-              ))}
+
+            {/* Sets */}
+            <div className="p-3 space-y-3">
+              {exSets.map((s, idx) => {
+                const tgt = targets[s.id] ?? {} as WorkoutSetResponse;
+                return (
+                  <div key={s.id}>
+                    <SetRow
+                      state={s}
+                      target={tgt}
+                      active={isActive}
+                      onFieldChange={(f, v) => updateSetField(s.id, f, v)}
+                      onDone={() => toggleDone(s.id)}
+                      onOpenModal={() => setEditModal(s.id)}
+                    />
+                    {/* Rest timer — shown below each set once active, collapsed by default */}
+                    {isActive && (
+                      <RestTimer key={`rest-${s.id}`} />
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Add set */}
+              {isActive && (
+                <button
+                  onClick={() => addSet(exercise_id)}
+                  className="text-xs text-blue hover:underline w-full text-left px-1 mt-1"
+                >
+                  + Add set
+                </button>
+              )}
             </div>
           </div>
         );
       })}
 
       {/* Add exercise button */}
-      <button
-        onClick={() => setShowPicker(true)}
-        className="w-full card py-5 text-sm text-blue border-dashed hover:bg-card/50 transition-all flex items-center justify-center gap-2"
-      >
-        <span className="text-lg">+</span> Add exercise
-      </button>
-
-      {/* Empty state */}
-      {sets.length === 0 && (
-        <div className="text-center py-8">
-          <p className="text-secondary text-sm">Tap "Add exercise" to start logging</p>
-        </div>
+      {isActive && (
+        <button
+          onClick={() => setShowPicker(true)}
+          className="w-full py-3 text-sm text-blue border border-dashed border-blue/30 rounded-xl hover:bg-blue-glow/20 transition-colors"
+        >
+          + Add exercise
+        </button>
       )}
 
-      {/* Exercise picker modal */}
-      {showPicker && exercises && (
-        <ExercisePicker
-          exercises={exercises}
+      {/* Edit modal */}
+      {editModal && targets[editModal] && (
+        <SetEditModal
+          set={sets.find(s => s.id === editModal)!}
+          target={targets[editModal]}
+          onSave={patch => updateSetPatch(editModal, patch)}
+          onClose={() => setEditModal(null)}
+        />
+      )}
+
+      {/* Exercise picker */}
+      {showPicker && (
+        <InlineExercisePicker
+          exercises={exercises ?? []}
           onSelect={addExercise}
           onClose={() => setShowPicker(false)}
         />

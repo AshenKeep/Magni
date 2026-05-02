@@ -124,6 +124,7 @@ class WorkoutSetResponse(BaseModel):
     laps: Optional[int]
     avg_heart_rate: Optional[int]
     calories: Optional[int]
+    is_done: bool
     rpe: Optional[int]
     notes: Optional[str]
     logged_at: datetime
@@ -148,6 +149,7 @@ class WorkoutCreate(BaseModel):
 
 class WorkoutSetUpdate(BaseModel):
     log_type: Optional[str] = None
+    is_done: Optional[bool] = None
     reps: Optional[int] = None
     weight_kg: Optional[float] = None
     duration_seconds: Optional[int] = None

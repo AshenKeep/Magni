@@ -40,7 +40,7 @@ function TodayWorkoutCard({ workout }: { workout: WorkoutResponse }) {
           onClick={() => navigate(`/workouts/${workout.id}`)}
           className="btn-primary"
         >
-          {isInProgress ? "Continue" : "View"}
+          Go to workout
         </button>
       </div>
       <div className="px-5 py-3">

@@ -125,7 +125,7 @@ export default function WorkoutDetailPage() {
     grouped[s.exercise_id].push(s);
   }
 
-  const isPlanned = !workout.ended_at && workout.sets.length === 0;
+  const isPlanned = !workout.ended_at;  // show Start for any unfinished workout
 
   return (
     <div className="p-8 space-y-6 max-w-3xl">
@@ -139,7 +139,7 @@ export default function WorkoutDetailPage() {
           )}
           {isPlanned && (
             <button onClick={() => navigate(`/workouts/new?workout_id=${workout.id}`)} className="btn-primary text-xs">
-              ▶ Start
+              ▶ Start workout
             </button>
           )}
           <button onClick={() => { if (confirm("Delete this workout?")) deleteMutation.mutate(); }}

@@ -184,6 +184,7 @@ export interface WorkoutSetResponse {
   laps: number | null;
   avg_heart_rate: number | null;
   calories: number | null;
+  is_done: boolean;
   rpe: number | null;
   notes: string | null;
   logged_at: string;

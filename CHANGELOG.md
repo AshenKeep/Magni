@@ -5,6 +5,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.12] — 2026-05-02
+
+### Added
+
+- **`is_done` on workout sets** — new boolean column persisted to the database (migration `0008`). Survives closing and reopening the app mid-workout.
+
+### Changed — Workout logging flow redesigned
+
+**Dashboard card**: button now reads "Go to workout" and routes to the workout overview page (not the logger).
+
+**WorkoutDetailPage**: "▶ Start workout" button routes to the logger. Any unfinished workout (planned or in-progress) shows the button.
+
+**Logger (NewWorkoutPage) — complete rewrite**:
+
+*Pre-start phase* — user lands here, sees the planned exercises and targets but inputs are read-only. A single large **"▶ Start workout"** button is shown. Nothing is timed, nothing is auto-started.
+
+*Active phase* — after tapping Start:
+- Global timer runs in the header alongside the Finish button.
+- For each set:
+  - **Target row** (dimmed italic): shows what the template planned ("Target: 10 reps × 60 kg")
+  - **Notes from template** shown in a blue callout if present
+  - **Actual inputs**: editable inline with `+Add field` dropdown; tap "Edit all" for a full modal with all fields
+  - **Done button** → turns green ✓ on tap, saves `is_done=true` to the server
+  - **Rest timer** appears below each set — Start/Stop/Reset stopwatch for the rest interval between sets
+- "Add set" per exercise, "Add exercise" at the bottom
+- **Finish ✓** button saves `ended_at`, `duration_seconds`, invalidates workouts/activity/dashboard queries, navigates to the workout detail page.
+
+---
+
 ## [0.0.11] — 2026-05-02
 
 ### Fixed

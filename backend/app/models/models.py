@@ -97,6 +97,7 @@ class WorkoutSet(Base):
     avg_heart_rate: Mapped[Optional[int]] = mapped_column(Integer)
     calories: Mapped[Optional[int]] = mapped_column(Integer)
     # Common
+    is_done: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     rpe: Mapped[Optional[int]] = mapped_column(Integer)
     notes: Mapped[Optional[str]] = mapped_column(Text)
     logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
