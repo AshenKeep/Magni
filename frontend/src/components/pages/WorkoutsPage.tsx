@@ -509,17 +509,26 @@ export default function WorkoutsPage() {
   useEffect(() => { localStorage.setItem(DATE_KEY, cursor.toISOString()); }, [cursor]);
 
   const range = useMemo(() => {
+    // Use local-time midnight so the range matches what the user sees on the calendar,
+    // not UTC midnight (which would be off by the timezone offset).
+    function localMidnight(d: Date): Date {
+      const r = new Date(d); r.setHours(0, 0, 0, 0); return r;
+    }
+    function localEndOfDay(d: Date): Date {
+      const r = new Date(d); r.setHours(23, 59, 59, 999); return r;
+    }
     if (mode === "day") {
-      const s = new Date(cursor); s.setHours(0,0,0,0);
-      const e = new Date(cursor); e.setHours(23,59,59,999);
-      return { from: s, to: e };
+      return { from: localMidnight(cursor), to: localEndOfDay(cursor) };
     }
     if (mode === "week") {
-      return { from: startOfWeek(cursor, { weekStartsOn: 1 }), to: endOfWeek(cursor, { weekStartsOn: 1 }) };
+      return {
+        from: localMidnight(startOfWeek(cursor, { weekStartsOn: 1 })),
+        to: localEndOfDay(endOfWeek(cursor, { weekStartsOn: 1 })),
+      };
     }
     return {
-      from: startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 }),
-      to: endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 }),
+      from: localMidnight(startOfWeek(startOfMonth(cursor), { weekStartsOn: 1 })),
+      to: localEndOfDay(endOfWeek(endOfMonth(cursor), { weekStartsOn: 1 })),
     };
   }, [mode, cursor]);
 

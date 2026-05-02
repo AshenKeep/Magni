@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 const RANGES = [7, 30, 90];
@@ -10,11 +11,32 @@ const tt = {
   labelStyle: { color: "#888" },
 };
 
+function fmtDuration(secs: number | null | undefined): string {
+  if (!secs) return "";
+  const m = Math.round(secs / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+}
+
 export default function ActivityPage() {
   const [days, setDays] = useState(30);
   const { data: stats, isLoading } = useQuery({
     queryKey: ["daily-stats", days], queryFn: () => api.stats.daily(days),
   });
+
+  // Fetch completed workouts for the selected range
+  const rangeStart = subDays(new Date(), days);
+  const { data: workouts = [] } = useQuery({
+    queryKey: ["workouts-activity", days],
+    queryFn: () => api.workouts.list({
+      limit: 200,
+      from_date: rangeStart.toISOString(),
+      to_date: new Date().toISOString(),
+    }),
+  });
+  // Only show finished workouts (ended_at is set)
+  const finishedWorkouts = workouts
+    .filter(w => !!w.ended_at)
+    .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 
   const chartData = (stats ?? []).slice().reverse().map((s) => ({
     date:       format(new Date(s.date), "d MMM"),
@@ -125,6 +147,43 @@ export default function ActivityPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Workouts log */}
+      <div>
+        <p className="label mb-3">Workouts ({finishedWorkouts.length})</p>
+        {finishedWorkouts.length === 0 ? (
+          <div className="card p-6 text-center text-secondary text-sm">
+            No completed workouts in the last {days} days.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {finishedWorkouts.map(w => {
+              const exCount = new Set(w.sets.map(s => s.exercise_id)).size;
+              return (
+                <Link
+                  key={w.id}
+                  to={`/workouts/${w.id}`}
+                  className="card px-5 py-4 flex items-center justify-between hover:bg-card/80 transition-all block"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-primary">{w.title ?? "Workout"}</p>
+                    <p className="text-xs text-secondary mt-0.5">
+                      {format(new Date(w.started_at), "EEE d MMM · HH:mm")}
+                      {w.duration_seconds ? ` · ${fmtDuration(w.duration_seconds)}` : ""}
+                      {exCount > 0 ? ` · ${exCount} exercise${exCount !== 1 ? "s" : ""}` : ""}
+                      {` · ${w.sets.length} set${w.sets.length !== 1 ? "s" : ""}`}
+                    </p>
+                  </div>
+                  <div className="text-right space-y-0.5">
+                    {w.avg_heart_rate && <p className="text-xs text-magenta">♥ {w.avg_heart_rate} bpm</p>}
+                    {w.calories_burned && <p className="text-xs text-secondary">{w.calories_burned} kcal</p>}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

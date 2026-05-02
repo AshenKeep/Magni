@@ -72,7 +72,7 @@ async def create_workout(
 
 @router.get("/", response_model=list[WorkoutResponse])
 async def list_workouts(
-    limit: int = Query(20, le=100),
+    limit: int = Query(20, le=500),
     offset: int = Query(0, ge=0),
     from_date: Optional[datetime] = None,
     to_date: Optional[datetime] = None,

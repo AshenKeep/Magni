@@ -23,6 +23,7 @@ function fmtDuration(secs: number | null | undefined): string {
 function TodayWorkoutCard({ workout }: { workout: WorkoutResponse }) {
   const navigate = useNavigate();
   const isPlanned = !workout.ended_at && workout.sets.length === 0;
+  const isInProgress = !workout.ended_at && workout.sets.length > 0;
   const exCount = new Set(workout.sets.map(s => s.exercise_id)).size;
 
   return (
@@ -30,15 +31,16 @@ function TodayWorkoutCard({ workout }: { workout: WorkoutResponse }) {
       <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-card">
         <div>
           <p className="text-xs text-magenta uppercase tracking-wider font-medium">
-            {isPlanned ? "📋 Scheduled for today" : "🏋 Today's workout"}
+            {isPlanned ? "📋 Scheduled for today" : isInProgress ? "🏋 In progress" : "✅ Today's workout"}
           </p>
           <p className="font-semibold text-primary mt-0.5">{workout.title ?? "Workout"}</p>
         </div>
+        {/* Go to the detail/overview page — user can choose to Start from there */}
         <button
-          onClick={() => navigate(`/workouts/new?workout_id=${workout.id}`)}
+          onClick={() => navigate(`/workouts/${workout.id}`)}
           className="btn-primary"
         >
-          {isPlanned ? "▶ Start" : "Continue"}
+          {isInProgress ? "Continue" : "View"}
         </button>
       </div>
       <div className="px-5 py-3">
@@ -46,13 +48,13 @@ function TodayWorkoutCard({ workout }: { workout: WorkoutResponse }) {
           <p className="text-sm text-secondary">
             {workout.sets.length > 0
               ? `${workout.sets.length} sets planned · ${exCount} exercise${exCount !== 1 ? "s" : ""}`
-              : "Tap Start to begin logging."}
+              : "Tap View to see your plan and start."}
           </p>
         ) : (
           <p className="text-sm text-secondary">
             {workout.sets.length} sets logged
             {exCount > 0 ? ` · ${exCount} exercise${exCount !== 1 ? "s" : ""}` : ""}
-            {workout.duration_seconds ? ` · ${fmtDuration(workout.duration_seconds)}` : " · in progress"}
+            {workout.duration_seconds ? ` · ${Math.round(workout.duration_seconds / 60)}m` : " · in progress"}
           </p>
         )}
       </div>

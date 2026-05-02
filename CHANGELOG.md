@@ -5,6 +5,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.11] — 2026-05-02
+
+### Fixed
+
+- **Calendar blank — events not showing** — the workouts API call was sending `limit=200` but the backend had `le=100`. FastAPI returned 422 and the calendar received nothing. Backend cap raised to 500. Calendar date range now also uses local-midnight boundaries (not UTC) so workouts are attributed to the correct day for your timezone.
+
+- **Workout start time wrong** — when opening a planned workout from the dashboard or calendar, `started_at` stayed as the originally-scheduled date (e.g. 8am Thursday) rather than the moment the user actually pressed Start. Now, when `NewWorkoutPage` loads with a `?workout_id=...` for a workout that hasn't ended yet, it immediately PATCHes `started_at = now()` and resets the in-page timer accordingly. Duration is computed from that new timestamp when the user taps Finish.
+
+- **"Continue" / "View" opened the logger directly** — the dashboard card was routing to `/workouts/new?workout_id=...` (the active logging screen). It now routes to `/workouts/{id}` (the detail/overview page) where the user can see their planned exercises and explicitly tap "▶ Start workout" when ready.
+
+- **Activity tab didn't show completed workouts** — the tab only displayed Garmin data (steps, HR, sleep). Completed workouts now appear in a "Workouts (N)" section at the bottom, filtered to the selected day range (7d/30d/90d) and sorted newest-first. Each row shows: date/time, duration, exercise count, set count, avg HR, and calories. Finishing a workout now also invalidates the activity query so it updates immediately.
+
+---
+
 ## [0.0.10] — 2026-05-02
 
 ### Fixed / Changed

@@ -133,7 +133,7 @@ export default function AdminPage() {
     },
   });
 
-  // v0.0.10 — backup management
+  // v0.0.11 — backup management
   const { data: backupList } = useQuery({
     queryKey: ["backup-list"], queryFn: api.admin.listBackups,
   });
@@ -575,7 +575,7 @@ export default function AdminPage() {
       <div className="card p-5">
         <p className="label mb-3">System</p>
         <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.10</span></div>
+          <div><span className="text-secondary">Version </span><span className="text-primary font-mono">v0.0.11</span></div>
           <div><span className="text-secondary">Environment </span><span className="text-primary font-mono">{import.meta.env.MODE}</span></div>
           <div><span className="text-secondary">Media storage </span><span className="text-primary font-mono">{mediaStatus?.media_storage ?? "…"}</span></div>
           <div><span className="text-secondary">GIFs cached </span><span className="text-primary font-mono">{mediaStatus?.gif_count ?? 0}</span></div>

@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.10
+**Version:** v0.0.11
 
 A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 

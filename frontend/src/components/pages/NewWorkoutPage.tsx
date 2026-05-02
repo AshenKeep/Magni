@@ -165,9 +165,11 @@ export default function NewWorkoutPage() {
 
   const exerciseMap = (exercises ?? []).reduce((acc, ex) => { acc[ex.id] = ex; return acc; }, {} as Record<string, ExerciseResponse>);
 
-  // If we navigated here with ?workout_id=… (i.e. started from a template),
-  // load the existing workout and pre-fill the set list. This is what makes
-  // template-driven workouts editable in v0.0.7.
+  // If we navigated here with ?workout_id=… (i.e. started from a template or the
+  // dashboard), load the existing workout and pre-fill the set list.
+  // Crucially: if the workout is still "planned" (no ended_at), we stamp
+  // started_at = NOW so the recorded start time and the on-screen timer are
+  // both accurate — not whatever date the template was originally scheduled for.
   useEffect(() => {
     if (!workoutId || sets.length > 0) return;
     let cancelled = false;
@@ -181,6 +183,17 @@ export default function NewWorkoutPage() {
           exercise_name: exerciseMap[s.exercise_id]?.name ?? "",
         }));
         setSets(enriched);
+
+        // If this is a planned workout (not yet finished), stamp the actual start
+        // time to now so the duration/timer are accurate
+        if (!w.ended_at) {
+          const now = new Date();
+          startTime.current = now;   // reset the in-page timer origin
+          await api.workouts.update(workoutId, { started_at: now.toISOString() });
+        } else {
+          // Workout already ended (continue-editing an old one) — start timer from when it started
+          startTime.current = new Date(w.started_at);
+        }
       } catch { /* swallow — empty workout is fine */ }
     })();
     return () => { cancelled = true; };
@@ -257,6 +270,8 @@ export default function NewWorkoutPage() {
       duration_seconds: duration,
     });
     qc.invalidateQueries({ queryKey: ["workouts"] });
+    qc.invalidateQueries({ queryKey: ["workouts-today"] });
+    qc.invalidateQueries({ queryKey: ["workouts-activity"] });
     qc.invalidateQueries({ queryKey: ["dashboard"] });
     navigate(`/workouts/${workoutId}`);
   }
