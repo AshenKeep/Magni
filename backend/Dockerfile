@@ -29,4 +29,4 @@ COPY backend/ .
 # Copy React build output into the backend image
 COPY --from=frontend-builder /frontend/dist /app/static
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8443 --workers 2 ${SSL_CERTFILE:+--ssl-certfile $SSL_CERTFILE --ssl-keyfile $SSL_KEYFILE}"]

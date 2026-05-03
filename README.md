@@ -149,6 +149,85 @@ docker compose exec backend python -m app.cli list-users
 
 ---
 
+## HTTPS / TLS setup
+
+Magni supports three modes depending on your stage:
+
+### Mode 1 — Local LAN HTTPS (no reverse proxy, testing/dev)
+
+Uvicorn handles TLS directly. No extra software needed.
+
+```bash
+# 1. Generate a self-signed cert for your server's LAN IP
+./scripts/gen-certs.sh 10.0.10.181   # replace with your server's IP
+
+# 2. Update .env
+BACKEND_PORT=8443
+SSL_CERTFILE=/certs/cert.pem
+SSL_KEYFILE=/certs/key.pem
+APP_URL=https://10.0.10.181:8443
+ALLOWED_ORIGINS=https://10.0.10.181:8443
+
+# 3. Restart
+docker compose up -d
+```
+
+Access at `https://10.0.10.181:8443`. First visit you'll see a browser TLS warning — accept it once (or install `certs/ca.crt` to trust permanently).
+
+**Trust on phone/tablet:**
+- **iOS**: Serve `certs/ca.crt` over HTTP (`python3 -m http.server 9000 --directory certs`), open the URL on your iPhone, install the profile, then enable trust in Settings → General → About → Certificate Trust Settings.
+- **Android**: Transfer `certs/ca.crt` to phone → Settings → Security → Install certificates → CA certificate.
+
+---
+
+### Mode 2 — Caddy reverse proxy (easiest production path)
+
+Caddy handles TLS automatically including Let's Encrypt cert renewal.
+
+```bash
+# .env: leave SSL_CERTFILE / SSL_KEYFILE blank (uvicorn runs plain HTTP)
+BACKEND_PORT=8443
+SSL_CERTFILE=
+SSL_KEYFILE=
+
+# Caddyfile (minimal):
+# gym.yourdomain.com {
+#     reverse_proxy localhost:8443
+# }
+
+# docker-compose: add a caddy service or run Caddy on the host
+```
+
+---
+
+### Mode 3 — Nginx reverse proxy
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name gym.yourdomain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/gym.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gym.yourdomain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8443;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+---
+
+### Mode 4 — Pangolin (Newt tunnel, for exposing through NAT)
+
+Pangolin handles ingress — point it at `localhost:8443`. Leave `SSL_CERTFILE`/`SSL_KEYFILE` blank so uvicorn runs plain HTTP internally (Pangolin terminates TLS at the edge).
+
+---
+
 ## Backup & restore
 
 Backups run automatically per `BACKUP_SCHEDULE`. As of v0.0.9 they are written as `magni_backup_YYYYMMDD_HHMMSS.tar.gz`, each tarball containing:
