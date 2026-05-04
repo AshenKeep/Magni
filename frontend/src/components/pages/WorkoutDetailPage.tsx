@@ -105,8 +105,8 @@ export default function WorkoutDetailPage() {
     },
   });
 
-  if (isLoading) return <div className="p-4 md:p-8 text-secondary text-sm">Loading…</div>;
-  if (!workout)  return <div className="p-4 md:p-8 text-secondary text-sm">Workout not found.</div>;
+  if (isLoading) return <div className="p-4 lg:p-8 text-secondary text-sm">Loading…</div>;
+  if (!workout)  return <div className="p-4 lg:p-8 text-secondary text-sm">Workout not found.</div>;
 
   const exerciseMap = (exercises ?? []).reduce((acc, ex) => { acc[ex.id] = ex.name; return acc; }, {} as Record<string, string>);
 
@@ -128,7 +128,7 @@ export default function WorkoutDetailPage() {
   const isPlanned = !workout.ended_at;  // show Start for any unfinished workout
 
   return (
-    <div className="p-4 md:p-8 space-y-6 max-w-3xl">
+    <div className="p-4 lg:p-8 space-y-6 max-w-3xl">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <button onClick={() => navigate(-1)} className="text-sm text-secondary hover:text-primary transition-colors">← Back</button>
         <div className="flex gap-2">

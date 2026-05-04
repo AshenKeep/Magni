@@ -8,6 +8,7 @@ import {
   LOG_TYPE_LABELS,
 } from "../../lib/metrics";
 import { DynamicMetricFields } from "./DynamicMetricFields";
+import { useIsTouchDevice } from "../../hooks/useIsTouchDevice";
 
 /**
  * Modal for picking a single exercise and configuring its sets before adding
@@ -54,6 +55,7 @@ function setDraftToPayload(s: SetDraft): TemplateSetCreate {
 }
 
 export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerProps) {
+  const isTouch = useIsTouchDevice();
   const { data: exercises = [] } = useQuery({
     queryKey: ["exercises"],
     queryFn: () => api.exercises.list(),
@@ -146,26 +148,26 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center sm:p-4">
-      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-5xl h-[92vh] sm:h-[85vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end lg:items-center justify-center lg:p-4">
+      <div className="bg-surface border border-border rounded-t-2xl lg:rounded-2xl w-full max-w-5xl h-[92vh] lg:h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           {/* Mobile: back button when exercise is selected */}
           {selected ? (
-            <button onClick={() => setSelectedId(null)} className="sm:hidden text-secondary hover:text-primary text-sm">
+            <button onClick={() => setSelectedId(null)} className="lg:hidden text-secondary hover:text-primary text-sm">
               ← Back
             </button>
           ) : (
-            <span className="sm:hidden" />
+            <span />
           )}
-          <h2 className="text-base sm:text-lg font-semibold">{title ?? "Add exercise"}</h2>
+          <h2 className="text-base lg:text-lg font-semibold">{title ?? "Add exercise"}</h2>
           <button onClick={onClose} className="text-secondary hover:text-primary text-xl leading-none">×</button>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
           {/* Left: list — hidden on mobile when exercise selected */}
-          <div className={`${selected ? "hidden sm:flex" : "flex"} flex-col w-full sm:w-1/2 sm:border-r sm:border-border`}>
-            <div className="p-3 sm:p-4 border-b border-border space-y-2">
+          <div className={`${selected && isTouch ? "hidden" : "flex"} flex-col w-full lg:w-1/2 lg:border-r lg:border-border`}>
+            <div className="p-3 lg:p-4 border-b border-border space-y-2">
               <input
                 type="text"
                 placeholder="Search exercises…"
@@ -216,7 +218,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
           </div>
 
           {/* Right: preview + form — full screen on mobile when exercise selected */}
-          <div className={`${!selected ? "hidden sm:flex" : "flex"} flex-col w-full sm:w-1/2 overflow-hidden`}>
+          <div className={`${!selected && isTouch ? "hidden" : "flex"} flex-col w-full lg:w-1/2 overflow-hidden`}>
             {!selected ? (
               <div className="flex-1 flex items-center justify-center text-secondary text-sm p-8 text-center">
                 Pick an exercise from the list to configure sets.

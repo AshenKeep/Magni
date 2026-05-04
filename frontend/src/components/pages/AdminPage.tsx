@@ -209,7 +209,7 @@ export default function AdminPage() {
     (provider === "both" && !ascConfigured && !wxConfigured);
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-4xl w-full">
+    <div className="p-4 lg:p-8 space-y-8 max-w-4xl w-full">
       <h1 className="text-2xl font-bold text-primary">Admin</h1>
 
       {/* Backup */}

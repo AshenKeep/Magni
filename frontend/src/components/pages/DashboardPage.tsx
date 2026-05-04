@@ -82,7 +82,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-5xl w-full">
+    <div className="p-4 lg:p-8 space-y-8 max-w-5xl w-full">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
         <Link to="/workouts/new" className="btn-primary flex items-center gap-2">
