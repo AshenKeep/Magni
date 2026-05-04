@@ -236,7 +236,7 @@ export default function ExercisesPage() {
   }, {} as Record<string, ExerciseResponse[]>);
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-4 md:p-8 space-y-6 max-w-4xl w-full">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Exercise Library</h1>

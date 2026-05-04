@@ -87,7 +87,7 @@ export default function TemplatesPage() {
   }, {} as Record<string, string>);
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-4 md:p-8 space-y-6 max-w-4xl w-full">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-primary">Templates</h1>
         <button onClick={() => setShowNew(true)} className="btn-primary">+ New template</button>

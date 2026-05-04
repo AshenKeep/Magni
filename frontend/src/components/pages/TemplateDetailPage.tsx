@@ -65,11 +65,11 @@ export default function TemplateDetailPage() {
     onSuccess: (data) => navigate(`/workouts/new?workout_id=${data.workout_id}`),
   });
 
-  if (isLoading) return <div className="p-8 text-secondary text-sm">Loading…</div>;
-  if (!template) return <div className="p-8 text-secondary text-sm">Template not found.</div>;
+  if (isLoading) return <div className="p-4 md:p-8 text-secondary text-sm">Loading…</div>;
+  if (!template) return <div className="p-4 md:p-8 text-secondary text-sm">Template not found.</div>;
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-4 md:p-8 space-y-6 max-w-4xl w-full">
       <div className="flex items-center gap-4">
         <button
           onClick={() => navigate("/templates")}

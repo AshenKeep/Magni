@@ -495,7 +495,9 @@ export default function WorkoutsPage() {
 
   const [mode, setMode] = useState<ViewMode>(() => {
     const s = localStorage.getItem(STORAGE_KEY);
-    return (s === "day" || s === "week" || s === "month") ? s : "week";
+    if (s === "day" || s === "week" || s === "month") return s;
+    // Default to day on mobile (week grid unreadable on small screens)
+    return window.innerWidth < 768 ? "day" : "week";
   });
   const [cursor, setCursor] = useState<Date>(() => {
     const s = localStorage.getItem(DATE_KEY);
@@ -580,7 +582,7 @@ export default function WorkoutsPage() {
   };
 
   return (
-    <div className="p-8 space-y-6 max-w-6xl">
+    <div className="p-4 md:p-8 space-y-6 max-w-6xl w-full">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold text-primary">Schedule</h1>

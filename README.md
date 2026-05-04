@@ -1,6 +1,6 @@
 # Magni
 
-**Version:** v0.0.12
+**Version:** v0.0.13
 
 A self-hosted fitness tracking system. Log workouts, build templates, sync Garmin watch data, and review everything in one dashboard — running entirely on your own server.
 
@@ -151,32 +151,50 @@ docker compose exec backend python -m app.cli list-users
 
 ## HTTPS / TLS setup
 
-Magni supports three modes depending on your stage:
+Magni always runs HTTPS — there is no plain HTTP mode.
+
+> **One-time setup required for every new deployment.**
+> You must run `gen-certs.sh` once before starting the container.
+> After that, `docker compose pull && docker compose up -d` is all you ever need for updates.
+
+### Step 0 — Generate certs (one time per deployment)
+
+```bash
+# Run from the directory containing docker-compose.yml
+# Replace YOUR_SERVER_IP with your actual server IP, and YOUR_CERTS_PATH
+# with wherever your compose volume mounts certs from on the host.
+./scripts/gen-certs.sh YOUR_SERVER_IP /YOUR_CERTS_PATH
+```
+
+This creates three files in the specified directory:
+- `cert.pem` — server certificate
+- `key.pem` — private key  
+- `ca.crt` — install this on phones/tablets to trust the cert without warnings
+
+Everyone running a new deployment needs to do this step once. The cert bakes in your server's IP address, so a pre-generated cert cannot be shared between deployments.
 
 ### Mode 1 — Local LAN HTTPS (no reverse proxy, testing/dev)
 
-Uvicorn handles TLS directly. No extra software needed.
-
 ```bash
-# 1. Generate a self-signed cert for your server's LAN IP
-./scripts/gen-certs.sh YOUR_SERVER_IP
-
-# 2. Update .env
+# .env settings
 BACKEND_PORT=8443
 SSL_CERTFILE=/certs/cert.pem
 SSL_KEYFILE=/certs/key.pem
 APP_URL=https://YOUR_SERVER_IP:8443
 ALLOWED_ORIGINS=https://YOUR_SERVER_IP:8443
 
-# 3. Restart
+# Start (after gen-certs.sh has been run)
 docker compose up -d
+
+# Confirm
+docker logs magni_backend | head -3
+# → Starting HTTPS on port 8443
 ```
 
-Access at `https://YOUR_SERVER_IP:8443`. First visit shows a TLS warning — accept once or install `certs/ca.crt` to trust permanently.
-
-**Trust on phone/tablet:**
-- **iOS**: Serve `certs/ca.crt` over HTTP (`python3 -m http.server 9000 --directory certs`), open the URL on your iPhone, install the profile, then enable trust in Settings → General → About → Certificate Trust Settings.
-- **Android**: Transfer `certs/ca.crt` to phone → Settings → Security → Install certificates → CA certificate.
+**Trust on devices (one time per device):**
+- **Browser**: visit the URL, click Advanced → Proceed
+- **iOS**: serve `ca.crt` over HTTP (`python3 -m http.server 9000 --directory /YOUR_CERTS_PATH`), open that URL on the device, install the profile, then Settings → General → About → Certificate Trust Settings → enable trust
+- **Android**: transfer `ca.crt` to the device → Settings → Security → Install certificates → CA certificate
 
 ---
 
@@ -185,17 +203,15 @@ Access at `https://YOUR_SERVER_IP:8443`. First visit shows a TLS warning — acc
 Caddy handles TLS automatically including Let's Encrypt cert renewal.
 
 ```bash
-# .env: leave SSL_CERTFILE / SSL_KEYFILE blank (uvicorn runs plain HTTP)
+# .env: SSL vars still required (uvicorn terminates TLS internally)
 BACKEND_PORT=8443
-SSL_CERTFILE=
-SSL_KEYFILE=
+SSL_CERTFILE=/certs/cert.pem
+SSL_KEYFILE=/certs/key.pem
 
 # Caddyfile (minimal):
-# gym.yourdomain.com {
+# your.domain.com {
 #     reverse_proxy localhost:8443
 # }
-
-# docker-compose: add a caddy service or run Caddy on the host
 ```
 
 ---

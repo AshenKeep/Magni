@@ -7,37 +7,65 @@
 @layer base {
   * {
     box-sizing: border-box;
+    /* Remove tap highlight on mobile */
+    -webkit-tap-highlight-color: transparent;
   }
+
   body {
     background-color: #000000;
     color: #F0F0F0;
     font-family: Inter, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Prevent overscroll bounce revealing black */
+    overscroll-behavior: none;
   }
+
+  /* Prevent iOS font size adjustment */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: #0D0D0D; }
   ::-webkit-scrollbar-thumb { background: #2A2A2A; border-radius: 2px; }
+
+  /* iOS safe area bottom padding utility */
+  .pb-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-blue text-white font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-blue-dim active:scale-95;
+    @apply bg-blue text-white font-medium px-4 py-2.5 rounded-lg text-sm transition-all active:scale-95;
+    /* Remove 300ms tap delay */
+    touch-action: manipulation;
+    /* Minimum touch target */
+    min-height: 44px;
   }
   .btn-secondary {
-    @apply bg-card border border-border text-primary font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-muted active:scale-95;
+    @apply bg-card border border-border text-primary font-medium px-4 py-2.5 rounded-lg text-sm transition-all active:scale-95;
+    touch-action: manipulation;
+    min-height: 44px;
   }
   .btn-danger {
-    @apply bg-danger/10 border border-danger/30 text-danger font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-danger/20 active:scale-95;
+    @apply bg-danger/10 border border-danger/30 text-danger font-medium px-4 py-2.5 rounded-lg text-sm transition-all active:scale-95;
+    touch-action: manipulation;
+    min-height: 44px;
   }
   .btn-magenta {
-    @apply bg-magenta text-white font-medium px-4 py-2 rounded-lg text-sm transition-all hover:bg-magenta-dim active:scale-95;
+    @apply bg-magenta text-white font-medium px-4 py-2.5 rounded-lg text-sm transition-all active:scale-95;
+    touch-action: manipulation;
+    min-height: 44px;
   }
   .card {
     @apply bg-card border border-border rounded-xl;
   }
   .input {
-    @apply w-full bg-surface border border-border rounded-lg px-4 py-2.5 text-sm text-primary placeholder-secondary focus:outline-none focus:border-blue transition-colors;
+    /* font-size MUST be 16px+ on iOS to prevent auto-zoom on focus */
+    @apply w-full bg-surface border border-border rounded-lg px-4 py-3 text-base text-primary placeholder-secondary focus:outline-none focus:border-blue transition-colors;
+    touch-action: manipulation;
   }
   .label {
     @apply block text-xs text-secondary uppercase tracking-wider mb-1.5;

@@ -146,29 +146,38 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-      <div className="bg-surface border border-border rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center sm:p-4">
+      <div className="bg-surface border border-border rounded-t-2xl sm:rounded-2xl w-full max-w-5xl h-[92vh] sm:h-[85vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="text-lg font-semibold">{title ?? "Add exercise"}</h2>
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          {/* Mobile: back button when exercise is selected */}
+          {selected ? (
+            <button onClick={() => setSelectedId(null)} className="sm:hidden text-secondary hover:text-primary text-sm">
+              ← Back
+            </button>
+          ) : (
+            <span className="sm:hidden" />
+          )}
+          <h2 className="text-base sm:text-lg font-semibold">{title ?? "Add exercise"}</h2>
           <button onClick={onClose} className="text-secondary hover:text-primary text-xl leading-none">×</button>
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-          {/* Left: list */}
-          <div className="w-1/2 border-r border-border flex flex-col">
-            <div className="p-4 border-b border-border space-y-2">
+          {/* Left: list — hidden on mobile when exercise selected */}
+          <div className={`${selected ? "hidden sm:flex" : "flex"} flex-col w-full sm:w-1/2 sm:border-r sm:border-border`}>
+            <div className="p-3 sm:p-4 border-b border-border space-y-2">
               <input
                 type="text"
                 placeholder="Search exercises…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="bg-card border border-border rounded-lg px-3 py-2 text-sm text-primary placeholder-secondary w-full"
+                className="input text-base"
+                autoFocus
               />
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1 overflow-x-auto pb-1">
                 <button
                   onClick={() => setMuscleFilter(null)}
-                  className={`text-xs px-2 py-1 rounded ${muscleFilter === null ? "bg-blue text-white" : "bg-card text-secondary hover:text-primary"}`}
+                  className={`text-xs px-2 py-1 rounded shrink-0 ${muscleFilter === null ? "bg-blue text-white" : "bg-card text-secondary"}`}
                 >
                   All
                 </button>
@@ -176,7 +185,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                   <button
                     key={m}
                     onClick={() => setMuscleFilter(m)}
-                    className={`text-xs px-2 py-1 rounded ${muscleFilter === m ? "bg-blue text-white" : "bg-card text-secondary hover:text-primary"}`}
+                    className={`text-xs px-2 py-1 rounded shrink-0 ${muscleFilter === m ? "bg-blue text-white" : "bg-card text-secondary"}`}
                   >
                     {m}
                   </button>
@@ -192,7 +201,7 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
                     <li
                       key={ex.id}
                       onClick={() => onSelect(ex)}
-                      className={`px-4 py-3 cursor-pointer hover:bg-card ${selectedId === ex.id ? "bg-card border-l-4 border-blue" : ""}`}
+                      className={`px-4 py-3 cursor-pointer active:bg-card ${selectedId === ex.id ? "bg-card border-l-4 border-blue" : ""}`}
                     >
                       <div className="font-medium text-sm">{ex.name}</div>
                       <div className="text-xs text-secondary">
@@ -206,8 +215,8 @@ export function ExercisePicker({ open, onClose, onAdd, title }: ExercisePickerPr
             </div>
           </div>
 
-          {/* Right: preview + form */}
-          <div className="w-1/2 flex flex-col overflow-hidden">
+          {/* Right: preview + form — full screen on mobile when exercise selected */}
+          <div className={`${!selected ? "hidden sm:flex" : "flex"} flex-col w-full sm:w-1/2 overflow-hidden`}>
             {!selected ? (
               <div className="flex-1 flex items-center justify-center text-secondary text-sm p-8 text-center">
                 Pick an exercise from the list to configure sets.
