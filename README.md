@@ -90,9 +90,9 @@ API keys for exercise providers (AscendAPI, WorkoutX) are **NOT** in `.env` — 
 | `SECRET_KEY` | JWT signing key — `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENVIRONMENT` | `production` or `development` |
 | `BACKEND_PORT` | Port exposed to host (default `8000`) |
-| `TZ` | Timezone e.g. `Australia/Perth` |
+| `TZ` | Timezone e.g. `YOUR_TIMEZONE` |
 | `BACKUP_SCHEDULE` | Cron schedule (default `0 2 * * *` — 2am daily) |
-| `CIFS_PATH` | NAS backup share e.g. `//192.168.1.x/backups` |
+| `CIFS_PATH` | NAS backup share e.g. `//YOUR_NAS_IP/backups` |
 | `CIFS_USERNAME` | NAS username |
 | `CIFS_PASSWORD` | NAS password |
 | `MEDIA_STORAGE` | `external` / `local` / `cifs` (default `external`) |
@@ -159,20 +159,20 @@ Uvicorn handles TLS directly. No extra software needed.
 
 ```bash
 # 1. Generate a self-signed cert for your server's LAN IP
-./scripts/gen-certs.sh 10.0.10.181   # replace with your server's IP
+./scripts/gen-certs.sh YOUR_SERVER_IP
 
 # 2. Update .env
 BACKEND_PORT=8443
 SSL_CERTFILE=/certs/cert.pem
 SSL_KEYFILE=/certs/key.pem
-APP_URL=https://10.0.10.181:8443
-ALLOWED_ORIGINS=https://10.0.10.181:8443
+APP_URL=https://YOUR_SERVER_IP:8443
+ALLOWED_ORIGINS=https://YOUR_SERVER_IP:8443
 
 # 3. Restart
 docker compose up -d
 ```
 
-Access at `https://10.0.10.181:8443`. First visit you'll see a browser TLS warning — accept it once (or install `certs/ca.crt` to trust permanently).
+Access at `https://YOUR_SERVER_IP:8443`. First visit shows a TLS warning — accept once or install `certs/ca.crt` to trust permanently.
 
 **Trust on phone/tablet:**
 - **iOS**: Serve `certs/ca.crt` over HTTP (`python3 -m http.server 9000 --directory certs`), open the URL on your iPhone, install the profile, then enable trust in Settings → General → About → Certificate Trust Settings.

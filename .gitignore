@@ -24,4 +24,7 @@ Thumbs.db
 
 # Docker
 *.log
-certs/
+certs/*.pem
+certs/*.crt
+certs/*.key
+certs/openssl.conf

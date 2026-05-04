@@ -57,7 +57,7 @@ services:
     container_name: magni_backend
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-8443}:8443"
+      - "${BACKEND_PORT:-8443}:${BACKEND_PORT:-8443}"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-magni}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-magni}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
@@ -71,8 +71,7 @@ services:
       MEDIA_STORAGE: ${MEDIA_STORAGE:-external}
       MEDIA_DIR: /media/exercises
       MEDIA_CIFS_PATH: ${MEDIA_CIFS_PATH:-}
-      # TLS — set both to enable HTTPS directly in uvicorn (no reverse proxy needed).
-      # Leave blank/unset when terminating TLS at a reverse proxy (Nginx/Caddy/Pangolin).
+      # TLS — set both to enable HTTPS. Leave blank for plain HTTP or behind a reverse proxy.
       SSL_CERTFILE: ${SSL_CERTFILE:-}
       SSL_KEYFILE: ${SSL_KEYFILE:-}
     depends_on:
@@ -83,14 +82,15 @@ services:
     volumes:
       - backup_data:/backups
       - media_data:/media/exercises
-      # TLS certs — mounted read-only from ./certs/ on the host.
-      # Run ./scripts/gen-certs.sh to generate, then set SSL_CERTFILE/SSL_KEYFILE in .env.
+      # TLS certs — only needed when SSL_CERTFILE/SSL_KEYFILE are set in .env.
+      # Run ./scripts/gen-certs.sh to create. Directory is created below to avoid
+      # docker compose errors when it doesn't exist yet.
       - ./certs:/certs:ro
     networks:
       - magni_internal
     healthcheck:
-      # Use HTTPS with -k (allow self-signed) if SSL is active, else plain HTTP
-      test: ["CMD", "sh", "-c", "curl -fsk ${SSL_CERTFILE:+https}${SSL_CERTFILE:-http}://localhost:8443/health 2>/dev/null || curl -fsk http://localhost:8000/health"]
+      # Tries HTTPS first (port 8443 with -k to allow self-signed), falls back to HTTP (port 8000)
+      test: ["CMD", "curl", "-fsk", "https://localhost:${BACKEND_PORT:-8443}/health"]
       interval: 30s
       timeout: 10s
       retries: 3

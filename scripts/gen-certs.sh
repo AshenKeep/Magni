@@ -3,8 +3,8 @@
 #
 # Usage:
 #   ./scripts/gen-certs.sh                   # auto-detects LAN IP
-#   ./scripts/gen-certs.sh 192.168.1.50      # specify your server's LAN IP
-#   ./scripts/gen-certs.sh 192.168.1.50 10.0.10.181  # multiple IPs
+#   ./scripts/gen-certs.sh YOUR_SERVER_IP        # specify your server's LAN IP
+#   ./scripts/gen-certs.sh 192.168.x.x 10.0.x.x  # multiple IPs
 #
 # Outputs:
 #   certs/ca.crt     — install this on phones/tablets to trust the cert
