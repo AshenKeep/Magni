@@ -104,6 +104,15 @@ async def health():
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
 
+    # Mount /icons explicitly so PWA icons and favicons are served correctly
+    # and not caught by the SPA catch-all below
+    icons_dir = STATIC_DIR / "icons"
+    if icons_dir.exists():
+        app.mount("/icons", StaticFiles(directory=str(icons_dir)), name="icons")
+
+    # Serve manifest and service worker directly from static root
+    # (Vite copies public/ into the build output root)
+
 # Serve locally stored exercise GIFs - MUST be before the SPA fallback route
 if MEDIA_DIR.exists():
     app.mount("/media", StaticFiles(directory=str(MEDIA_DIR)), name="media")
