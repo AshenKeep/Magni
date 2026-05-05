@@ -21,9 +21,12 @@ export default function Layout() {
       {/* Sidebar — shown when mouse/trackpad is primary input */}
       {!isTouch && (
         <aside className="w-52 flex flex-col shrink-0 border-r border-border bg-surface">
-          <div className="px-5 py-5 border-b border-border">
-            <span className="text-blue font-bold text-xl tracking-tight">Magni</span>
-            <span className="block text-xs text-secondary mt-0.5">v0.0.13</span>
+          <div className="px-5 py-5 border-b border-border flex items-center gap-3">
+            <img src="/icons/icon-192.png" alt="Magni" className="w-8 h-8 rounded-lg shrink-0" />
+            <div>
+              <span className="text-blue font-bold text-xl tracking-tight">Magni</span>
+              <span className="block text-xs text-secondary">v0.0.13</span>
+            </div>
           </div>
 
           <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
@@ -61,7 +64,10 @@ export default function Layout() {
         {/* Mobile header */}
         {isTouch && (
           <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-surface border-b border-border">
+            <div className="flex items-center gap-2">
+            <img src="/icons/icon-192.png" alt="Magni" className="w-7 h-7 rounded-lg" />
             <span className="text-blue font-bold text-lg tracking-tight">Magni</span>
+          </div>
             <button onClick={logout} className="text-xs text-secondary hover:text-danger transition-colors">
               Sign out
             </button>
