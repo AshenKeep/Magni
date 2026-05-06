@@ -428,6 +428,19 @@ class AdminUserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AdminUserCreate(BaseModel):
+    email: str
+    display_name: str
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
+
+
 class PasswordResetRequest(BaseModel):
     email: str
     new_password: str

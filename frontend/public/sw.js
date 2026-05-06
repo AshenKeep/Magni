@@ -1,7 +1,7 @@
 // Magni Service Worker — v0.0.13
 // Cache-first for app shell, network-first for API
 
-const CACHE = "magni-v0.0.13";
+const CACHE = "magni-v0.0.14";
 const SHELL = ["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", e => {

@@ -25,7 +25,7 @@ export default function Layout() {
             <img src="/icons/icon-192.png" alt="Magni" className="w-8 h-8 rounded-lg shrink-0" />
             <div>
               <span className="text-blue font-bold text-xl tracking-tight">Magni</span>
-              <span className="block text-xs text-secondary">v0.0.13</span>
+              <span className="block text-xs text-secondary">v0.0.14</span>
             </div>
           </div>
 

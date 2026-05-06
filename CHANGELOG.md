@@ -5,6 +5,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [0.0.14] — 2026-05-06
+
+### Added
+
+**Multi-user management in Admin panel**
+- `POST /api/admin/users` — create new user accounts directly from the admin panel (name, email, password).
+- `DELETE /api/admin/users/{user_id}` — delete a user account (cannot delete your own).
+- Admin Users section now shows user count, a "+ Add user" inline form, and Disable/Enable + Delete per row.
+
+**GitHub Wiki — full API documentation**
+- Covers all endpoints: Authentication, Workouts, Workout Sets, Templates, Exercises, Stats, Admin.
+- Mobile App Guide with Expo/React Native connection example, startup flow, and multi-user notes.
+
+---
+
 ## [0.0.12] — 2026-05-02
 
 ### Added

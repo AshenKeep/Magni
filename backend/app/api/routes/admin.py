@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.db.session import get_db
 from app.models.models import User, Exercise, SeedLog, ApiKey, BackupSettings
 from app.schemas.schemas import (
-    BackupStatus, AdminUserResponse, PasswordResetRequest, SeedLogResponse,
+    BackupStatus, AdminUserResponse, AdminUserCreate, PasswordResetRequest, SeedLogResponse,
     BackupListEntry, BackupSettingsResponse, BackupSettingsUpdate,
     BackupCreateRequest, BackupCreateResponse, BackupRestoreResponse,
 )
@@ -160,6 +160,43 @@ async def delete_backup_file(
 async def list_users(_: str = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.created_at))
     return result.scalars().all()
+
+
+@router.post("/users", response_model=AdminUserResponse, status_code=201)
+async def create_user(
+    payload: AdminUserCreate,
+    _: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new user account. Requires admin auth (any logged-in user)."""
+    existing = await db.execute(select(User).where(User.email == payload.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    user = User(
+        email=payload.email,
+        display_name=payload.display_name,
+        hashed_password=hash_password(payload.password),
+    )
+    db.add(user)
+    await db.flush()
+    return user
+
+
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a user account. Cannot delete your own account."""
+    if user_id == current_user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.delete(user)
+    await db.flush()
 
 
 @router.post("/users/reset-password")

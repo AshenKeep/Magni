@@ -117,6 +117,13 @@ export default function AdminPage() {
   const [provider, setProvider] = useState<"ascendapi" | "workoutx" | "both">("ascendapi");
   const [debugResult, setDebugResult] = useState<string>("");
 
+  // New user form state
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [addUserError, setAddUserError] = useState("");
+
   const { data: backupStatus } = useQuery({ queryKey: ["backup-status"], queryFn: api.admin.backupStatus });
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: api.admin.listUsers });
   const { data: mediaStatus } = useQuery({ queryKey: ["media-status"], queryFn: api.admin.mediaStatus });
@@ -168,6 +175,21 @@ export default function AdminPage() {
 
   const toggleActive = useMutation({
     mutationFn: (userId: string) => api.admin.toggleActive(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
+
+  const createUser = useMutation({
+    mutationFn: () => api.admin.createUser({ email: newEmail, display_name: newDisplayName, password: newPassword }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      setNewEmail(""); setNewDisplayName(""); setNewPassword("");
+      setShowAddUser(false); setAddUserError("");
+    },
+    onError: (e: Error) => setAddUserError(e.message),
+  });
+
+  const deleteUser = useMutation({
+    mutationFn: (userId: string) => api.admin.deleteUser(userId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
 
@@ -523,22 +545,67 @@ export default function AdminPage() {
 
       {/* Users */}
       <div className="card overflow-hidden">
-        <div className="px-5 py-4 border-b border-border bg-card">
-          <p className="font-medium text-primary">Users</p>
+        <div className="px-5 py-4 border-b border-border bg-card flex items-center justify-between">
+          <p className="font-medium text-primary">Users ({(users ?? []).length})</p>
+          <button onClick={() => { setShowAddUser(v => !v); setAddUserError(""); }}
+            className="btn-primary text-xs">
+            {showAddUser ? "Cancel" : "+ Add user"}
+          </button>
         </div>
+
+        {/* Add user form */}
+        {showAddUser && (
+          <div className="p-5 border-b border-border space-y-3 bg-blue-glow/10">
+            {addUserError && (
+              <div className="bg-danger/10 border border-danger/30 text-danger text-sm rounded-lg px-4 py-2">{addUserError}</div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Display name</label>
+                <input value={newDisplayName} onChange={e => setNewDisplayName(e.target.value)}
+                  className="input" placeholder="Sauron" />
+              </div>
+              <div>
+                <label className="label">Email</label>
+                <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                  className="input" placeholder="user@example.com" />
+              </div>
+            </div>
+            <div>
+              <label className="label">Password (min 8 chars)</label>
+              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                className="input" placeholder="••••••••" />
+            </div>
+            <button
+              onClick={() => createUser.mutate()}
+              disabled={!newEmail || !newDisplayName || newPassword.length < 8 || createUser.isPending}
+              className="btn-primary disabled:opacity-50"
+            >
+              {createUser.isPending ? "Creating…" : "Create user"}
+            </button>
+          </div>
+        )}
+
         <div className="divide-y divide-border/40">
           {(users ?? []).map((u) => (
-            <div key={u.id} className="px-5 py-3 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-primary">{u.display_name}</p>
-                <p className="text-xs text-secondary">{u.email} · joined {format(new Date(u.created_at), "d MMM yyyy")}</p>
+            <div key={u.id} className="px-5 py-3 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-primary truncate">{u.display_name}</p>
+                <p className="text-xs text-secondary truncate">{u.email} · joined {format(new Date(u.created_at), "d MMM yyyy")}</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${u.is_active ? "badge-blue" : "bg-danger/10 text-danger"}`}>
                   {u.is_active ? "Active" : "Disabled"}
                 </span>
-                <button onClick={() => toggleActive.mutate(u.id)} className="text-xs text-secondary hover:text-primary transition-colors">
+                <button onClick={() => toggleActive.mutate(u.id)}
+                  className="text-xs text-secondary hover:text-primary transition-colors">
                   {u.is_active ? "Disable" : "Enable"}
+                </button>
+                <button
+                  onClick={() => { if (confirm(`Delete user "${u.display_name}" (${u.email})? This cannot be undone.`)) deleteUser.mutate(u.id); }}
+                  className="text-xs text-secondary hover:text-danger transition-colors"
+                >
+                  Delete
                 </button>
               </div>
             </div>
