@@ -114,7 +114,7 @@ function SetEditModal({
     const patch: Partial<WorkoutSetResponse> = {};
     for (const f of enabled) {
       const key = METRIC_TO_WORKOUT_SET_KEY[f] as keyof WorkoutSetResponse;
-      (patch as Record<string, unknown>)[key] = values[f] ?? null;
+      (patch as unknown as Record<string, unknown>)[key] = values[f] ?? null;
     }
     onSave(patch);
     onClose();

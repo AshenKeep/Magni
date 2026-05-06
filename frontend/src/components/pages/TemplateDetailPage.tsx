@@ -55,7 +55,7 @@ function setDraftToPayload(s: SetDraft): TemplateSetCreate {
   const out: TemplateSetCreate = { set_number: s.set_number, log_type: s.log_type };
   for (const f of s.enabled) {
     const v = s.values[f];
-    if (v != null) (out as Record<string, unknown>)[METRIC_TO_TEMPLATE_SET_KEY[f]] = v;
+    if (v != null) (out as unknown as Record<string, unknown>)[METRIC_TO_TEMPLATE_SET_KEY[f]] = v;
   }
   if (s.notes.trim()) out.notes = s.notes.trim();
   return out;
