@@ -182,6 +182,7 @@ function EditExerciseModal({ te, exerciseName, templateId, onClose }: {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
+export default function TemplateDetailPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const navigate = useNavigate();
